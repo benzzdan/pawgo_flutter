@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pawgo/config/env.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/screens/sign_in_screen.dart';
 import 'package:pawgo/screens/main_shell.dart';
@@ -8,8 +10,15 @@ import 'package:pawgo/screens/active_walk_screen.dart';
 import 'package:pawgo/screens/walker_chat_screen.dart';
 import 'package:pawgo/screens/profile_screen.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  const env = Env.local; // Switch to Env.production for release builds
+  await Supabase.initialize(
+    url: env.supabaseUrl,
+    anonKey: env.supabaseAnonKey,
+  );
+
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
