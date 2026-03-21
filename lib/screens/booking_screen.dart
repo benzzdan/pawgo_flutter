@@ -148,7 +148,7 @@ class _BookingScreenState extends State<BookingScreen> {
 
       if (response.status == 201) {
         final bookingId = response.data['booking_id'];
-        _showBookingConfirmation(bookingId);
+        _navigateToPayment(bookingId);
       } else {
         final error = response.data?['error']?['message'] ?? 'Booking failed';
         _showError(error);
@@ -177,36 +177,16 @@ class _BookingScreenState extends State<BookingScreen> {
     );
   }
 
-  void _showBookingConfirmation(String bookingId) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(Icons.check_circle, color: AppColors.green600, size: 28),
-            const SizedBox(width: 8),
-            Text('Booking Created!',
-                style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
-          ],
-        ),
-        content: Text(
-          'Your walk with ${_walkerName()} has been booked. You\'ll receive a confirmation once payment is processed.',
-          style: GoogleFonts.nunito(fontSize: 15),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              Navigator.pop(context, bookingId);
-            },
-            child: Text('Done',
-                style: GoogleFonts.nunito(
-                    fontWeight: FontWeight.w700, color: AppColors.green600)),
-          ),
-        ],
-      ),
+  void _navigateToPayment(String bookingId) {
+    Navigator.pushReplacementNamed(
+      context,
+      '/payment',
+      arguments: {
+        'booking_id': bookingId,
+        'total_price': _totalPrice(),
+        'walker_name': _walkerName(),
+        'duration_minutes': _durationMinutes,
+      },
     );
   }
 

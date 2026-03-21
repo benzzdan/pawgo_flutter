@@ -11,6 +11,7 @@ import 'package:pawgo/screens/active_walk_screen.dart';
 import 'package:pawgo/screens/walker_chat_screen.dart';
 import 'package:pawgo/screens/profile_screen.dart';
 import 'package:pawgo/screens/booking_screen.dart';
+import 'package:pawgo/screens/payment_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -52,6 +53,7 @@ class PawgoApp extends StatelessWidget {
         '/chat': (context) => const WalkerChatScreen(),
         '/profile': (context) => const ProfileScreen(),
         '/booking': (context) => const BookingScreen(),
+        '/payment': (context) => const PaymentScreen(),
       },
     );
   }
