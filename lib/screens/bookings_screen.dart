@@ -301,6 +301,18 @@ class _BookingsScreenState extends State<BookingsScreen> {
     }
   }
 
+  Future<List<Map<String, dynamic>>> _fetchClaims(String bookingId) async {
+    try {
+      final data = await _supabase
+          .from('insurance_claims')
+          .select('id, claim_type, status, amount_mxn')
+          .eq('booking_id', bookingId);
+      return List<Map<String, dynamic>>.from(data);
+    } catch (_) {
+      return [];
+    }
+  }
+
   void _showBookingDetail(Map<String, dynamic> booking) {
     final walkerData = booking['walkers'] as Map<String, dynamic>?;
     final walkerUser = walkerData?['users'] as Map<String, dynamic>?;
@@ -320,6 +332,11 @@ class _BookingsScreenState extends State<BookingsScreen> {
     final completedAt = booking['completed_at'] != null
         ? DateTime.tryParse(booking['completed_at'])
         : null;
+
+    // Pre-fetch claims for completed/disputed bookings
+    final claimsFuture = (status == 'walk_completed' || status == 'disputed')
+        ? _fetchClaims(booking['id'])
+        : Future.value(<Map<String, dynamic>>[]);
 
     showModalBottomSheet(
       context: context,
@@ -436,6 +453,79 @@ class _BookingsScreenState extends State<BookingsScreen> {
                 ),
                 const SizedBox(height: 16),
               ],
+              // Insurance claims section
+              if (status == 'walk_completed' || status == 'disputed')
+                FutureBuilder<List<Map<String, dynamic>>>(
+                  future: claimsFuture,
+                  builder: (context, snapshot) {
+                    final claims = snapshot.data;
+                    if (claims == null || claims.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 6),
+                        Text('Insurance Claims',
+                            style: GoogleFonts.nunito(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textSecondary)),
+                        const SizedBox(height: 8),
+                        ...claims.map((claim) {
+                          final claimType = claim['claim_type'] as String? ?? '';
+                          final claimStatus = claim['status'] as String? ?? '';
+                          final amount = (claim['amount_mxn'] as num?)?.toDouble();
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: _claimStatusBg(claimStatus),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.shield,
+                                      size: 18,
+                                      color: _claimStatusColor(claimStatus)),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      '${claimType[0].toUpperCase()}${claimType.substring(1)}${amount != null ? ' — \$${amount.toStringAsFixed(2)} MXN' : ''}',
+                                      style: GoogleFonts.nunito(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.textPrimary),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: _claimStatusColor(claimStatus)
+                                          .withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      claimStatus.toUpperCase(),
+                                      style: GoogleFonts.nunito(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          color:
+                                              _claimStatusColor(claimStatus)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                        const SizedBox(height: 6),
+                      ],
+                    );
+                  },
+                ),
               // Action buttons based on status
               if (status == 'walk_started' || status == 'confirmed') ...[
                 Row(
@@ -502,11 +592,71 @@ class _BookingsScreenState extends State<BookingsScreen> {
                   ],
                 ),
               ],
+              // Insurance claim button for completed or disputed walks
+              if (status == 'walk_completed' || status == 'disputed') ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      Navigator.pushNamed(context, '/insurance-claim',
+                          arguments: {
+                            'booking_id': booking['id'],
+                          });
+                    },
+                    icon: const Icon(Icons.shield, size: 18),
+                    label: Text('File Insurance Claim',
+                        style: GoogleFonts.nunito(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.orange500,
+                      side: const BorderSide(
+                          color: AppColors.orange500, width: 1.5),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
       ),
     );
+  }
+}
+
+Color _claimStatusColor(String status) {
+  switch (status) {
+    case 'open':
+      return AppColors.blue600;
+    case 'reviewing':
+      return AppColors.amber500;
+    case 'approved':
+      return AppColors.green600;
+    case 'rejected':
+      return AppColors.red500;
+    default:
+      return AppColors.textSecondary;
+  }
+}
+
+Color _claimStatusBg(String status) {
+  switch (status) {
+    case 'open':
+      return AppColors.blue50;
+    case 'reviewing':
+      return AppColors.amber50;
+    case 'approved':
+      return AppColors.green50;
+    case 'rejected':
+      return AppColors.red50;
+    default:
+      return AppColors.gray100;
   }
 }
 
