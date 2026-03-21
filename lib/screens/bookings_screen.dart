@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:pawgo/theme/app_theme.dart';
-import 'package:pawgo/models/mock_data.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/intl.dart';
 
 class BookingsScreen extends StatefulWidget {
   const BookingsScreen({super.key});
@@ -12,6 +14,114 @@ class BookingsScreen extends StatefulWidget {
 
 class _BookingsScreenState extends State<BookingsScreen> {
   String _selectedTab = 'upcoming';
+  List<Map<String, dynamic>> _bookings = [];
+  bool _isLoading = true;
+  String? _error;
+  RealtimeChannel? _channel;
+
+  final _supabase = Supabase.instance.client;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchBookings();
+    _subscribeToUpdates();
+  }
+
+  @override
+  void dispose() {
+    _channel?.unsubscribe();
+    super.dispose();
+  }
+
+  Future<void> _fetchBookings() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final userId = _supabase.auth.currentUser!.id;
+      final data = await _supabase
+          .from('bookings')
+          .select(
+              '*, walkers(id, user_id, users(full_name, avatar_url)), dogs(name, breed, photo_url)')
+          .eq('owner_id', userId)
+          .order('scheduled_at', ascending: false);
+
+      if (!mounted) return;
+      setState(() {
+        _bookings = List<Map<String, dynamic>>.from(data);
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _subscribeToUpdates() {
+    final userId = _supabase.auth.currentUser!.id;
+    _channel = _supabase.channel('bookings_owner_$userId');
+    _channel!.onPostgresChanges(
+      event: PostgresChangeEvent.update,
+      schema: 'public',
+      table: 'bookings',
+      filter: PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'owner_id',
+        value: userId,
+      ),
+      callback: (payload) {
+        final updated = payload.newRecord;
+        if (!mounted) return;
+        setState(() {
+          final idx =
+              _bookings.indexWhere((b) => b['id'] == updated['id']);
+          if (idx != -1) {
+            // Preserve joined data, update scalar fields
+            final existing = _bookings[idx];
+            _bookings[idx] = {
+              ...existing,
+              ...updated,
+              'walkers': existing['walkers'],
+              'dogs': existing['dogs'],
+            };
+          }
+        });
+      },
+    );
+    _channel!.subscribe();
+  }
+
+  List<Map<String, dynamic>> get _filteredBookings {
+    switch (_selectedTab) {
+      case 'upcoming':
+        return _bookings.where((b) {
+          final status = b['status'] as String;
+          return [
+            'pending',
+            'confirmed',
+            'walker_en_route',
+            'walk_started'
+          ].contains(status);
+        }).toList();
+      case 'past':
+        return _bookings
+            .where((b) => b['status'] == 'walk_completed')
+            .toList();
+      case 'cancelled':
+        return _bookings.where((b) {
+          final status = b['status'] as String;
+          return ['cancelled', 'disputed'].contains(status);
+        }).toList();
+      default:
+        return _bookings;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,19 +181,331 @@ class _BookingsScreenState extends State<BookingsScreen> {
           ),
         ),
         const SizedBox(height: 20),
-        // Bookings List
-        Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-            itemCount: MockData.bookings.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 16),
-            itemBuilder: (context, index) {
-              final booking = MockData.bookings[index];
-              return _BookingCard(booking: booking);
-            },
+        // Content
+        Expanded(child: _buildContent()),
+      ],
+    );
+  }
+
+  Widget _buildContent() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline, size: 48, color: AppColors.red500),
+              const SizedBox(height: 12),
+              Text(
+                'Failed to load bookings',
+                style: GoogleFonts.nunito(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              GestureDetector(
+                onTap: _fetchBookings,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.orange500,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'Retry',
+                    style: GoogleFonts.nunito(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-      ],
+      );
+    }
+
+    final filtered = _filteredBookings;
+
+    if (filtered.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('📋', style: const TextStyle(fontSize: 48)),
+            const SizedBox(height: 12),
+            Text(
+              _selectedTab == 'upcoming'
+                  ? 'No upcoming bookings'
+                  : _selectedTab == 'past'
+                      ? 'No past walks yet'
+                      : 'No cancelled bookings',
+              style: GoogleFonts.nunito(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _fetchBookings,
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+        itemCount: filtered.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 16),
+        itemBuilder: (context, index) {
+          return _BookingCard(
+            booking: filtered[index],
+            onTap: () => _openBookingDetail(filtered[index]),
+          );
+        },
+      ),
+    );
+  }
+
+  void _openBookingDetail(Map<String, dynamic> booking) {
+    final status = booking['status'] as String;
+    final walkerData = booking['walkers'] as Map<String, dynamic>?;
+    final walkerUser = walkerData?['users'] as Map<String, dynamic>?;
+    final dogData = booking['dogs'] as Map<String, dynamic>?;
+    final walkerName = walkerUser?['full_name'] ?? 'Walker';
+    final dogName = dogData?['name'] ?? 'Dog';
+
+    if (status == 'walk_started') {
+      // Navigate to active walk / GPS tracking
+      Navigator.pushNamed(context, '/active-walk', arguments: {
+        'booking_id': booking['id'],
+        'walker_name': walkerName,
+        'dog_name': dogName,
+      });
+    } else if (status == 'walk_completed') {
+      // Show walk summary dialog
+      _showBookingDetail(booking);
+    } else {
+      // Show booking detail dialog for other statuses
+      _showBookingDetail(booking);
+    }
+  }
+
+  void _showBookingDetail(Map<String, dynamic> booking) {
+    final walkerData = booking['walkers'] as Map<String, dynamic>?;
+    final walkerUser = walkerData?['users'] as Map<String, dynamic>?;
+    final dogData = booking['dogs'] as Map<String, dynamic>?;
+    final walkerName = walkerUser?['full_name'] ?? 'Unknown';
+    final dogName = dogData?['name'] ?? 'Unknown';
+    final dogBreed = dogData?['breed'] ?? '';
+    final status = booking['status'] as String;
+    final scheduledAt = booking['scheduled_at'] != null
+        ? DateTime.tryParse(booking['scheduled_at'])
+        : null;
+    final duration = booking['duration_minutes'] as int?;
+    final price = (booking['total_price_mxn'] as num?)?.toDouble();
+    final startedAt = booking['started_at'] != null
+        ? DateTime.tryParse(booking['started_at'])
+        : null;
+    final completedAt = booking['completed_at'] != null
+        ? DateTime.tryParse(booking['completed_at'])
+        : null;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.85,
+        expand: false,
+        builder: (ctx, scrollController) => SingleChildScrollView(
+          controller: scrollController,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Handle bar
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.gray300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Status badge
+              _StatusBadge(status: status),
+              const SizedBox(height: 16),
+              // Walker
+              Text('Walker',
+                  style: GoogleFonts.nunito(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textSecondary)),
+              const SizedBox(height: 4),
+              Text(walkerName,
+                  style: GoogleFonts.nunito(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary)),
+              const SizedBox(height: 16),
+              // Dog
+              Text('Dog',
+                  style: GoogleFonts.nunito(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textSecondary)),
+              const SizedBox(height: 4),
+              Text('$dogName${dogBreed.isNotEmpty ? ' ($dogBreed)' : ''}',
+                  style: GoogleFonts.nunito(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary)),
+              const SizedBox(height: 16),
+              // Scheduled time
+              if (scheduledAt != null) ...[
+                _DetailRow(
+                  icon: Icons.calendar_today,
+                  iconColor: AppColors.blue600,
+                  bgColor: AppColors.blue50,
+                  text: DateFormat('MMM d, yyyy').format(scheduledAt),
+                ),
+                const SizedBox(height: 10),
+                _DetailRow(
+                  icon: Icons.access_time,
+                  iconColor: AppColors.purple600,
+                  bgColor: AppColors.purple50,
+                  text: DateFormat('h:mm a').format(scheduledAt),
+                ),
+                const SizedBox(height: 10),
+              ],
+              // Duration
+              if (duration != null)
+                _DetailRow(
+                  icon: Icons.timer,
+                  iconColor: AppColors.green600,
+                  bgColor: AppColors.green50,
+                  text: '$duration min',
+                ),
+              if (duration != null) const SizedBox(height: 10),
+              // Started / Completed times
+              if (startedAt != null) ...[
+                _DetailRow(
+                  icon: Icons.play_arrow,
+                  iconColor: AppColors.green600,
+                  bgColor: AppColors.green50,
+                  text:
+                      'Started: ${DateFormat('h:mm a').format(startedAt.toLocal())}',
+                ),
+                const SizedBox(height: 10),
+              ],
+              if (completedAt != null) ...[
+                _DetailRow(
+                  icon: Icons.check_circle,
+                  iconColor: AppColors.green600,
+                  bgColor: AppColors.green50,
+                  text:
+                      'Completed: ${DateFormat('h:mm a').format(completedAt.toLocal())}',
+                ),
+                const SizedBox(height: 10),
+              ],
+              // Price
+              if (price != null) ...[
+                _DetailRow(
+                  icon: Icons.attach_money,
+                  iconColor: AppColors.orange500,
+                  bgColor: AppColors.orange50,
+                  text: '\$${price.toStringAsFixed(2)} MXN',
+                ),
+                const SizedBox(height: 16),
+              ],
+              // Action buttons based on status
+              if (status == 'walk_started' || status == 'confirmed') ...[
+                Row(
+                  children: [
+                    if (status == 'walk_started')
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            Navigator.pushNamed(context, '/active-walk',
+                                arguments: {
+                                  'booking_id': booking['id'],
+                                  'walker_name': walkerName,
+                                  'dog_name': dogName,
+                                });
+                          },
+                          child: Container(
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: AppColors.blue600,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Center(
+                              child: Text('Track Walk',
+                                  style: GoogleFonts.nunito(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white)),
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (status == 'walk_started') const SizedBox(width: 10),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          Navigator.pushNamed(context, '/chat', arguments: {
+                            'booking_id': booking['id'],
+                            'other_party_name': walkerName,
+                          });
+                        },
+                        child: Container(
+                          height: 48,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [
+                                AppColors.orange500,
+                                AppColors.orange400
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Center(
+                            child: Text('Chat',
+                                style: GoogleFonts.nunito(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -134,163 +556,201 @@ class _TabChip extends StatelessWidget {
   }
 }
 
-class _BookingCard extends StatelessWidget {
-  final Booking booking;
+class _StatusBadge extends StatelessWidget {
+  final String status;
 
-  const _BookingCard({required this.booking});
+  const _StatusBadge({required this.status});
 
   @override
   Widget build(BuildContext context) {
+    final config = _statusConfig(status);
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: config.bgColor,
+        borderRadius: BorderRadius.circular(8),
       ),
-      child: Column(
-        children: [
-          // Walker Info
-          Row(
-            children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [AppColors.orange400, AppColors.orange500],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Center(
-                  child:
-                      Text(booking.image, style: const TextStyle(fontSize: 24)),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      booking.walker,
-                      style: GoogleFonts.nunito(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.green50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        'Confirmed',
-                        style: GoogleFonts.nunito(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.green600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          // Details
-          _DetailRow(
-            icon: Icons.calendar_today,
-            iconColor: AppColors.blue600,
-            bgColor: AppColors.blue50,
-            text: booking.date,
-          ),
-          const SizedBox(height: 10),
-          _DetailRow(
-            icon: Icons.access_time,
-            iconColor: AppColors.purple600,
-            bgColor: AppColors.purple50,
-            text: '${booking.time} \u{2022} ${booking.duration}',
-          ),
-          const SizedBox(height: 10),
-          _DetailRow(
-            icon: Icons.location_on,
-            iconColor: AppColors.orange500,
-            bgColor: AppColors.orange50,
-            text: booking.location,
-          ),
-          const SizedBox(height: 16),
-          // Buttons
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: AppColors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border:
-                        Border.all(color: AppColors.orange500, width: 2),
-                  ),
-                  child: Center(
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.nunito(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.orange500,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Container(
-                  height: 44,
+      child: Text(
+        config.label,
+        style: GoogleFonts.nunito(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: config.textColor,
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusConfig {
+  final String label;
+  final Color bgColor;
+  final Color textColor;
+  const _StatusConfig(this.label, this.bgColor, this.textColor);
+}
+
+_StatusConfig _statusConfig(String status) {
+  switch (status) {
+    case 'pending':
+      return _StatusConfig('Pending', AppColors.amber50, AppColors.yellow800);
+    case 'confirmed':
+      return _StatusConfig('Confirmed', AppColors.green50, AppColors.green600);
+    case 'walker_en_route':
+      return _StatusConfig('En Route', AppColors.blue50, AppColors.blue600);
+    case 'walk_started':
+      return _StatusConfig(
+          'Walk In Progress', AppColors.blue50, AppColors.blue700);
+    case 'walk_completed':
+      return _StatusConfig('Completed', AppColors.green50, AppColors.green700);
+    case 'cancelled':
+      return _StatusConfig('Cancelled', AppColors.red50, AppColors.red500);
+    case 'disputed':
+      return _StatusConfig(
+          'Disputed', AppColors.purple50, AppColors.purple600);
+    default:
+      return _StatusConfig(
+          status, AppColors.gray100, AppColors.textSecondary);
+  }
+}
+
+class _BookingCard extends StatelessWidget {
+  final Map<String, dynamic> booking;
+  final VoidCallback onTap;
+
+  const _BookingCard({required this.booking, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final walkerData = booking['walkers'] as Map<String, dynamic>?;
+    final walkerUser = walkerData?['users'] as Map<String, dynamic>?;
+    final dogData = booking['dogs'] as Map<String, dynamic>?;
+    final walkerName = walkerUser?['full_name'] ?? 'Unknown Walker';
+    final dogName = dogData?['name'] ?? 'Unknown Dog';
+    final status = booking['status'] as String;
+    final scheduledAt = booking['scheduled_at'] != null
+        ? DateTime.tryParse(booking['scheduled_at'])
+        : null;
+    final duration = booking['duration_minutes'] as int?;
+    final price = (booking['total_price_mxn'] as num?)?.toDouble();
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 12,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            // Walker Info + Status
+            Row(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [AppColors.orange500, AppColors.orange400],
+                      colors: [AppColors.orange400, AppColors.orange500],
                     ),
                     borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.orange500.withValues(alpha: 0.25),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
+                  ),
+                  child: walkerUser?['avatar_url'] != null
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            walkerUser!['avatar_url'],
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Center(
+                              child: Text(
+                                walkerName.isNotEmpty
+                                    ? walkerName[0].toUpperCase()
+                                    : '?',
+                                style: const TextStyle(
+                                    fontSize: 24, color: Colors.white),
+                              ),
+                            ),
+                          ),
+                        )
+                      : Center(
+                          child: Text(
+                            walkerName.isNotEmpty
+                                ? walkerName[0].toUpperCase()
+                                : '?',
+                            style: const TextStyle(
+                                fontSize: 24, color: Colors.white),
+                          ),
+                        ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        walkerName,
+                        style: GoogleFonts.nunito(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
+                      const SizedBox(height: 4),
+                      _StatusBadge(status: status),
                     ],
                   ),
-                  child: Center(
-                    child: Text(
-                      'Reschedule',
-                      style: GoogleFonts.nunito(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
                 ),
+                Icon(Icons.chevron_right,
+                    color: AppColors.textTertiary, size: 24),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Dog name
+            _DetailRow(
+              icon: Icons.pets,
+              iconColor: AppColors.orange500,
+              bgColor: AppColors.orange50,
+              text: dogName,
+            ),
+            const SizedBox(height: 10),
+            // Date
+            if (scheduledAt != null) ...[
+              _DetailRow(
+                icon: Icons.calendar_today,
+                iconColor: AppColors.blue600,
+                bgColor: AppColors.blue50,
+                text: DateFormat('MMM d, yyyy').format(scheduledAt),
+              ),
+              const SizedBox(height: 10),
+              _DetailRow(
+                icon: Icons.access_time,
+                iconColor: AppColors.purple600,
+                bgColor: AppColors.purple50,
+                text:
+                    '${DateFormat('h:mm a').format(scheduledAt)}${duration != null ? ' · $duration min' : ''}',
               ),
             ],
-          ),
-        ],
+            // Price
+            if (price != null) ...[
+              const SizedBox(height: 10),
+              _DetailRow(
+                icon: Icons.attach_money,
+                iconColor: AppColors.green600,
+                bgColor: AppColors.green50,
+                text: '\$${price.toStringAsFixed(2)} MXN',
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -323,12 +783,14 @@ class _DetailRow extends StatelessWidget {
           child: Icon(icon, size: 18, color: iconColor),
         ),
         const SizedBox(width: 12),
-        Text(
-          text,
-          style: GoogleFonts.nunito(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
+        Expanded(
+          child: Text(
+            text,
+            style: GoogleFonts.nunito(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
           ),
         ),
       ],
