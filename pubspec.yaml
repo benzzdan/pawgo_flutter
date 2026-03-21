@@ -16,6 +16,7 @@ dependencies:
   purchases_flutter: ^8.6.0
   google_maps_flutter: ^2.12.0
   geolocator: ^13.0.2
+  image_picker: ^1.2.1
 
 dev_dependencies:
   flutter_test:
