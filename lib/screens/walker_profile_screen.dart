@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pawgo/services/analytics_service.dart';
 
 class WalkerProfileScreen extends StatefulWidget {
   const WalkerProfileScreen({super.key});
@@ -57,6 +58,7 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
           _reviews = List<Map<String, dynamic>>.from(reviewsResponse);
           _isLoading = false;
         });
+        AnalyticsService.instance.walkerProfileViewed(walkerId);
       }
     } catch (e) {
       if (mounted) {

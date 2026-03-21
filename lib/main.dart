@@ -17,6 +17,7 @@ import 'package:pawgo/screens/review_screen.dart';
 import 'package:pawgo/screens/walker_earnings_screen.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:pawgo/services/ad_service.dart';
+import 'package:pawgo/services/analytics_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,6 +29,11 @@ Future<void> main() async {
   );
 
   await AdService.instance.initialize();
+
+  await AnalyticsService.instance.initialize(
+    apiKey: env.posthogApiKey,
+    host: env.posthogHost,
+  );
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -94,10 +100,15 @@ class _AuthGateState extends State<_AuthGate> {
       final event = authState.event;
       if (event == AuthChangeEvent.signedIn ||
           event == AuthChangeEvent.tokenRefreshed) {
+        final userId = authState.session?.user.id;
+        if (userId != null) {
+          AnalyticsService.instance.identify(userId);
+        }
         Navigator.pushReplacementNamed(context, '/home');
         // Resume GPS broadcast if walker has an active walk
         GpsBroadcastService.instance.resumeIfActiveWalk();
       } else if (event == AuthChangeEvent.signedOut) {
+        AnalyticsService.instance.reset();
         GpsBroadcastService.instance.stopBroadcasting();
         Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
       }

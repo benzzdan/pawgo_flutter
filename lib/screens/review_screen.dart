@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/ad_service.dart';
+import 'package:pawgo/services/analytics_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class ReviewScreen extends StatefulWidget {
@@ -92,6 +93,10 @@ class _ReviewScreenState extends State<ReviewScreen> {
         _isSubmitting = false;
         _submitted = true;
       });
+      AnalyticsService.instance.reviewSubmitted(
+        bookingId: _bookingId!,
+        rating: _rating,
+      );
 
       // Show interstitial ad for free-tier users, then navigate back
       Future.delayed(const Duration(seconds: 2), () {
@@ -101,6 +106,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
               FullScreenContentCallback(
             onAdDismissedFullScreenContent: (ad) {
               ad.dispose();
+              AnalyticsService.instance.adDismissed(adType: 'interstitial');
               if (mounted) Navigator.pop(context);
             },
             onAdFailedToShowFullScreenContent: (ad, _) {
@@ -118,6 +124,11 @@ class _ReviewScreenState extends State<ReviewScreen> {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
 
+      AnalyticsService.instance.errorOccurred(
+        errorCode: 'review_error',
+        message: e.toString(),
+        screen: 'review',
+      );
       final message = e.toString().contains('duplicate')
           ? 'You have already reviewed this walk'
           : 'Failed to submit review: $e';

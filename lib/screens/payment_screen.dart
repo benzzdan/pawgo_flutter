@@ -5,6 +5,7 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/config/env.dart';
 import 'package:pawgo/theme/app_theme.dart';
+import 'package:pawgo/services/analytics_service.dart';
 
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({super.key});
@@ -114,6 +115,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
         _error = 'Payment failed: ${e.message ?? 'Unknown error'}';
         _processing = false;
       });
+      AnalyticsService.instance.paymentFailed(
+        bookingId: _bookingId!,
+        error: e.message ?? 'Unknown error',
+      );
     } catch (e) {
       // For local dev without RevenueCat setup, fall back to direct confirmation
       await _confirmPaymentDirectly();
@@ -138,6 +143,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           _paymentComplete = true;
           _processing = false;
         });
+        AnalyticsService.instance.bookingCompleted(bookingId: _bookingId!);
       } else {
         final errorMsg =
             response.data?['error']?['message'] ?? 'Payment confirmation failed';
@@ -145,6 +151,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
           _error = errorMsg;
           _processing = false;
         });
+        AnalyticsService.instance.paymentFailed(
+          bookingId: _bookingId!,
+          error: errorMsg,
+        );
       }
     } catch (e) {
       if (!mounted) return;
@@ -160,6 +170,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       await _supabase
           .from('bookings')
           .update({'status': 'cancelled'}).eq('id', _bookingId!);
+      AnalyticsService.instance.bookingCancelled(bookingId: _bookingId!);
     } catch (_) {
       // Best effort cancellation
     }

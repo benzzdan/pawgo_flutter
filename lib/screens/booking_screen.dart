@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
+import 'package:pawgo/services/analytics_service.dart';
 
 class BookingScreen extends StatefulWidget {
   const BookingScreen({super.key});
@@ -148,14 +149,25 @@ class _BookingScreenState extends State<BookingScreen> {
 
       if (response.status == 201) {
         final bookingId = response.data['booking_id'];
+        AnalyticsService.instance.bookingInitiated(walkerId: _walkerId!);
         _navigateToPayment(bookingId);
       } else {
         final error = response.data?['error']?['message'] ?? 'Booking failed';
         _showError(error);
+        AnalyticsService.instance.errorOccurred(
+          errorCode: 'booking_failed',
+          message: error,
+          screen: 'booking',
+        );
       }
     } catch (e) {
       if (!mounted) return;
       _showError('Failed to create booking. Please try again.');
+      AnalyticsService.instance.errorOccurred(
+        errorCode: 'booking_error',
+        message: e.toString(),
+        screen: 'booking',
+      );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

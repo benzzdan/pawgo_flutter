@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:pawgo/services/analytics_service.dart';
 
 class WalkerBookingsScreen extends StatefulWidget {
   const WalkerBookingsScreen({super.key});
@@ -135,6 +136,13 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
             SnackBar(content: Text(error.toString()), backgroundColor: Colors.red),
           );
         }
+        AnalyticsService.instance.errorOccurred(
+          errorCode: 'start_walk_failed',
+          message: error.toString(),
+          screen: 'walker_bookings',
+        );
+      } else {
+        AnalyticsService.instance.walkStarted(bookingId: bookingId);
       }
     } catch (e) {
       if (mounted) {
@@ -142,6 +150,11 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
           SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
       }
+      AnalyticsService.instance.errorOccurred(
+        errorCode: 'start_walk_error',
+        message: e.toString(),
+        screen: 'walker_bookings',
+      );
     }
   }
 
@@ -182,7 +195,13 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
             SnackBar(content: Text(error.toString()), backgroundColor: Colors.red),
           );
         }
+        AnalyticsService.instance.errorOccurred(
+          errorCode: 'end_walk_failed',
+          message: error.toString(),
+          screen: 'walker_bookings',
+        );
       } else {
+        AnalyticsService.instance.walkCompleted(bookingId: bookingId);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Walk completed!'), backgroundColor: AppColors.green600),
@@ -195,6 +214,11 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
           SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
       }
+      AnalyticsService.instance.errorOccurred(
+        errorCode: 'end_walk_error',
+        message: e.toString(),
+        screen: 'walker_bookings',
+      );
     }
   }
 

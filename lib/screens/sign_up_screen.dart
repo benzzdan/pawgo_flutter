@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pawgo/services/analytics_service.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -55,15 +56,27 @@ class _SignUpScreenState extends State<SignUpScreen> {
       if (!mounted) return;
 
       if (response.user != null && response.session != null) {
+        AnalyticsService.instance.userSignedUp();
         Navigator.pushReplacementNamed(context, '/home');
       } else if (response.user != null && response.session == null) {
+        AnalyticsService.instance.userSignedUp();
         // Email confirmation required
         _showConfirmationDialog();
       }
     } on AuthException catch (e) {
       setState(() => _error = e.message);
+      AnalyticsService.instance.errorOccurred(
+        errorCode: 'auth_error',
+        message: e.message,
+        screen: 'sign_up',
+      );
     } catch (e) {
       setState(() => _error = 'An unexpected error occurred');
+      AnalyticsService.instance.errorOccurred(
+        errorCode: 'unexpected_error',
+        message: e.toString(),
+        screen: 'sign_up',
+      );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
