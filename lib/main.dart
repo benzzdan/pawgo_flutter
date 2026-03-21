@@ -13,6 +13,7 @@ import 'package:pawgo/screens/profile_screen.dart';
 import 'package:pawgo/screens/booking_screen.dart';
 import 'package:pawgo/screens/payment_screen.dart';
 import 'package:pawgo/screens/walker_bookings_screen.dart';
+import 'package:pawgo/screens/review_screen.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
 
 Future<void> main() async {
@@ -62,6 +63,7 @@ class PawgoApp extends StatelessWidget {
         '/booking': (context) => const BookingScreen(),
         '/payment': (context) => const PaymentScreen(),
         '/walker-bookings': (context) => const WalkerBookingsScreen(),
+        '/review': (context) => const ReviewScreen(),
       },
     );
   }

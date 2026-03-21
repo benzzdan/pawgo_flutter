@@ -28,8 +28,10 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
   int _elapsedMinutes = 0;
   Timer? _elapsedTimer;
 
-  // Realtime subscription
+  // Realtime subscriptions
   RealtimeChannel? _locationChannel;
+  RealtimeChannel? _bookingChannel;
+  String? _walkerId;
 
   // GPS signal state
   bool _gpsSignalLost = false;
@@ -77,6 +79,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
     _elapsedTimer?.cancel();
     _gpsTimeoutTimer?.cancel();
     _locationChannel?.unsubscribe();
+    _bookingChannel?.unsubscribe();
     _mapController?.dispose();
     // Note: GPS broadcast is NOT stopped here intentionally.
     // The service is a singleton that continues in the background
@@ -100,6 +103,8 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
       final walkerUserId = data['walkers']?['user_id'] as String?;
       final isWalker = currentUserId != null && currentUserId == walkerUserId;
 
+      _walkerId = data['walkers']?['id'] as String?;
+
       setState(() {
         _walkerName ??= data['walkers']?['users']?['full_name'] as String? ?? 'Walker';
         _dogName ??= data['dogs']?['name'] as String? ?? 'Your dog';
@@ -112,6 +117,11 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
           _startElapsedTimer();
         }
       });
+
+      // Subscribe to booking status changes (for review prompt on completion)
+      if (!isWalker) {
+        _subscribeToBookingStatus();
+      }
 
       // If the current user is the walker and walk is active, start GPS broadcast
       final status = data['status'] as String?;
@@ -133,6 +143,35 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
         ),
       );
     }
+  }
+
+  void _subscribeToBookingStatus() {
+    if (_bookingId == null) return;
+    _bookingChannel?.unsubscribe();
+
+    _bookingChannel = Supabase.instance.client
+        .channel('booking_status_$_bookingId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'bookings',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: _bookingId!,
+          ),
+          callback: (payload) {
+            final status = payload.newRecord['status'] as String?;
+            if (status == 'walk_completed' && mounted) {
+              Navigator.pushReplacementNamed(context, '/review', arguments: {
+                'booking_id': _bookingId,
+                'walker_id': _walkerId,
+                'walker_name': _walkerName,
+              });
+            }
+          },
+        )
+        .subscribe();
   }
 
   void _startElapsedTimer() {
