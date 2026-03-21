@@ -344,6 +344,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'route': '/walker-bookings',
       },
       {
+        'icon': Icons.account_balance_wallet,
+        'color': AppColors.orange500,
+        'bgColor': AppColors.orange50,
+        'label': 'Walker Earnings',
+        'route': '/walker-earnings',
+      },
+      {
         'icon': Icons.notifications,
         'color': AppColors.blue600,
         'bgColor': AppColors.blue50,
