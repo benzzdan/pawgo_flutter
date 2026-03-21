@@ -61,6 +61,7 @@ class PawgoApp extends StatelessWidget {
       title: 'Pawgo',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.theme,
+      darkTheme: AppTheme.darkTheme,
       initialRoute: initialRoute,
       routes: {
         '/': (context) => const _AuthGate(),
