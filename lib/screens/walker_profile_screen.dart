@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pawgo/theme/app_theme.dart';
-import 'package:pawgo/models/mock_data.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class WalkerProfileScreen extends StatefulWidget {
   const WalkerProfileScreen({super.key});
@@ -11,26 +11,83 @@ class WalkerProfileScreen extends StatefulWidget {
 }
 
 class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
-  String? _selectedDate;
-  String? _selectedTime;
+  Map<String, dynamic>? _walker;
+  List<Map<String, dynamic>> _reviews = [];
+  bool _isLoading = true;
+  String? _error;
 
-  final walker = MockData.walkers[0];
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_isLoading && _walker == null && _error == null) {
+      _fetchWalkerData();
+    }
+  }
 
-  final availableDates = [
-    {'date': 'Today', 'day': 'Mar 6', 'available': true},
-    {'date': 'Tomorrow', 'day': 'Mar 7', 'available': true},
-    {'date': 'Fri', 'day': 'Mar 8', 'available': true},
-    {'date': 'Sat', 'day': 'Mar 9', 'available': false},
-    {'date': 'Sun', 'day': 'Mar 10', 'available': true},
-  ];
+  Future<void> _fetchWalkerData() async {
+    final walkerId = ModalRoute.of(context)?.settings.arguments as String?;
+    if (walkerId == null) {
+      setState(() {
+        _error = 'No walker ID provided';
+        _isLoading = false;
+      });
+      return;
+    }
 
-  final availableTimes = [
-    {'time': '9:00 AM', 'available': true},
-    {'time': '11:00 AM', 'available': true},
-    {'time': '2:00 PM', 'available': false},
-    {'time': '4:00 PM', 'available': true},
-    {'time': '6:00 PM', 'available': true},
-  ];
+    try {
+      final supabase = Supabase.instance.client;
+
+      final walkerResponse = await supabase
+          .from('walkers')
+          .select(
+              'id, user_id, bio, experience_years, hourly_rate_mxn, background_checked, is_enabled, avg_rating, total_walks, users(full_name, avatar_url)')
+          .eq('id', walkerId)
+          .single();
+
+      final reviewsResponse = await supabase
+          .from('reviews')
+          .select(
+              'id, rating, comment, created_at, reviewer_id, users(full_name, avatar_url)')
+          .eq('walker_id', walkerId)
+          .order('created_at', ascending: false);
+
+      if (mounted) {
+        setState(() {
+          _walker = walkerResponse;
+          _reviews = List<Map<String, dynamic>>.from(reviewsResponse);
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Failed to load walker profile';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  String _walkerName() {
+    final users = _walker?['users'];
+    if (users is Map) return users['full_name'] ?? 'Walker';
+    return 'Walker';
+  }
+
+  String? _walkerAvatarUrl() {
+    final users = _walker?['users'];
+    if (users is Map) return users['avatar_url'] as String?;
+    return null;
+  }
+
+  String _walkerInitials() {
+    final name = _walkerName();
+    final parts = name.split(' ');
+    if (parts.length >= 2) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    return name.isNotEmpty ? name[0].toUpperCase() : 'W';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +99,8 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
             // Header
             Container(
               color: AppColors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               child: Row(
                 children: [
                   GestureDetector(
@@ -72,20 +130,59 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
             ),
             // Content
             Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    _buildProfileHeader(),
-                    const SizedBox(height: 12),
-                    _buildVerificationSection(),
-                    const SizedBox(height: 12),
-                    _buildAboutSection(),
-                    const SizedBox(height: 12),
-                    _buildQuickBookSection(),
-                    const SizedBox(height: 12),
-                    _buildReviewsSection(),
-                    const SizedBox(height: 24),
-                  ],
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                      ? _buildErrorState()
+                      : _buildContent(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline,
+                size: 48, color: AppColors.textSecondary),
+            const SizedBox(height: 16),
+            Text(
+              _error!,
+              style: GoogleFonts.nunito(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  _isLoading = true;
+                  _error = null;
+                });
+                _fetchWalkerData();
+              },
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.orange500,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'Retry',
+                  style: GoogleFonts.nunito(
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),
@@ -95,223 +192,249 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
     );
   }
 
-  Widget _buildProfileHeader() {
-    return Container(
-      color: AppColors.white,
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildContent() {
+    return Stack(
+      children: [
+        SingleChildScrollView(
+          padding: const EdgeInsets.only(bottom: 80),
+          child: Column(
             children: [
-              // Avatar
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [AppColors.orange400, AppColors.orange500],
-                      ),
-                      borderRadius: BorderRadius.circular(22),
+              _buildProfileHeader(),
+              const SizedBox(height: 12),
+              _buildVerificationSection(),
+              const SizedBox(height: 12),
+              _buildAboutSection(),
+              const SizedBox(height: 12),
+              _buildReviewsSection(),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+        // Book Now CTA at bottom
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
+            child: GestureDetector(
+              onTap: () {
+                // Navigate to booking flow (US-026)
+              },
+              child: Container(
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppColors.green600,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.green600.withValues(alpha: 0.35),
+                      blurRadius: 20,
+                      offset: const Offset(0, 6),
                     ),
-                    child: Center(
-                      child: Text(walker.avatar,
-                          style: const TextStyle(fontSize: 40)),
-                    ),
-                  ),
-                  if (walker.verified)
-                    Positioned(
-                      bottom: -4,
-                      right: -4,
-                      child: Container(
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          color: AppColors.blue500,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
-                        child: const Icon(Icons.shield,
-                            color: Colors.white, size: 14),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 16),
-              // Info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+                    const Icon(Icons.calendar_today,
+                        color: Colors.white, size: 20),
+                    const SizedBox(width: 8),
                     Text(
-                      walker.name,
+                      'Book Now - \$${(_walker?['hourly_rate_mxn'] as num?)?.toInt() ?? 0} MXN/hr',
                       style: GoogleFonts.nunito(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(Icons.star,
-                            size: 16, color: AppColors.orange500),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${walker.rating}',
-                          style: GoogleFonts.nunito(
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        Text(
-                          ' (${walker.reviews} reviews)',
-                          style: GoogleFonts.nunito(
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.location_on,
-                                size: 14, color: AppColors.textSecondary),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${walker.distance} away',
-                              style: GoogleFonts.nunito(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppColors.green100,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 6,
-                                height: 6,
-                                decoration: const BoxDecoration(
-                                  color: AppColors.green500,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                walker.availability,
-                                style: GoogleFonts.nunito(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.green700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
                     ),
                   ],
                 ),
               ),
-              // Price
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '\$${walker.price}',
-                    style: GoogleFonts.nunito(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  Text(
-                    'per walk',
-                    style: GoogleFonts.nunito(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
-          const SizedBox(height: 16),
-          // Quick Actions
-          Row(
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProfileHeader() {
+    final avatarUrl = _walkerAvatarUrl();
+    final name = _walkerName();
+    final rating = (_walker?['avg_rating'] as num?)?.toDouble();
+    final hourlyRate = (_walker?['hourly_rate_mxn'] as num?)?.toInt() ?? 0;
+
+    return Container(
+      color: AppColors.white,
+      padding: const EdgeInsets.all(24),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Avatar
+          Stack(
+            clipBehavior: Clip.none,
             children: [
-              Expanded(
-                child: Container(
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.orange500,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.orange500.withValues(alpha: 0.3),
-                        blurRadius: 14,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [AppColors.orange400, AppColors.orange500],
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.calendar_today,
-                          color: Colors.white, size: 18),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Book Now',
-                        style: GoogleFonts.nunito(
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: avatarUrl != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(22),
+                        child: Image.network(avatarUrl, fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) {
+                          return Center(
+                            child: Text(
+                              _walkerInitials(),
+                              style: GoogleFonts.nunito(
+                                fontSize: 28,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                          );
+                        }),
+                      )
+                    : Center(
+                        child: Text(
+                          _walkerInitials(),
+                          style: GoogleFonts.nunito(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
-                    ],
+              ),
+              if (_walker?['background_checked'] == true)
+                Positioned(
+                  bottom: -4,
+                  right: -4,
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: AppColors.blue500,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                    child: const Icon(Icons.shield,
+                        color: Colors.white, size: 14),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: AppColors.green50,
-                  borderRadius: BorderRadius.circular(16),
+            ],
+          ),
+          const SizedBox(width: 16),
+          // Info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: GoogleFonts.nunito(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
-                child:
-                    const Icon(Icons.phone, size: 20, color: AppColors.green600),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: AppColors.blue50,
-                  borderRadius: BorderRadius.circular(16),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(Icons.star,
+                        size: 16, color: AppColors.orange500),
+                    const SizedBox(width: 4),
+                    Text(
+                      rating != null ? rating.toStringAsFixed(1) : 'New',
+                      style: GoogleFonts.nunito(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      ' (${_reviews.length} reviews)',
+                      style: GoogleFonts.nunito(
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
                 ),
-                child: const Icon(Icons.chat_bubble,
-                    size: 20, color: AppColors.blue600),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    if (_walker?['is_enabled'] == true)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.green100,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                color: AppColors.green500,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Available',
+                              style: GoogleFonts.nunito(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.green700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // Price
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '\$$hourlyRate',
+                style: GoogleFonts.nunito(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              Text(
+                'MXN/hr',
+                style: GoogleFonts.nunito(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
               ),
             ],
           ),
@@ -321,6 +444,10 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
   }
 
   Widget _buildVerificationSection() {
+    final backgroundChecked = _walker?['background_checked'] == true;
+    final experienceYears =
+        (_walker?['experience_years'] as num?)?.toInt() ?? 0;
+
     return Container(
       color: AppColors.white,
       padding: const EdgeInsets.all(24),
@@ -336,44 +463,33 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          _VerificationBadge(
-            icon: Icons.shield,
-            iconColor: Colors.white,
-            bgColor: AppColors.green500,
-            gradientColors: const [AppColors.green50, Color(0xFFECFDF5)],
-            title: 'Background Check Verified',
-            subtitle: 'Cleared on Mar 1, 2026',
-            checkColor: AppColors.green600,
-          ),
-          const SizedBox(height: 12),
-          _VerificationBadge(
-            icon: Icons.workspace_premium,
-            iconColor: Colors.white,
-            bgColor: AppColors.blue500,
-            gradientColors: const [AppColors.blue50, Color(0xFFECFEFF)],
-            title: 'Identity Verified',
-            subtitle: 'Government ID confirmed',
-            checkColor: AppColors.blue600,
-          ),
-          const SizedBox(height: 12),
-          _VerificationBadge(
-            icon: Icons.school,
-            iconColor: Colors.white,
-            bgColor: AppColors.purple500,
-            gradientColors: const [AppColors.purple50, Color(0xFFF3E8FF)],
-            title: 'Pet First Aid Certified',
-            subtitle: 'Red Cross certified \u{2022} 2024',
-            checkColor: AppColors.purple600,
-          ),
-          const SizedBox(height: 16),
+          if (backgroundChecked)
+            const _VerificationBadge(
+              icon: Icons.shield,
+              iconColor: Colors.white,
+              bgColor: AppColors.green500,
+              gradientColors: [AppColors.green50, Color(0xFFECFDF5)],
+              title: 'Background Check Verified',
+              subtitle: 'Background check cleared',
+              checkColor: AppColors.green600,
+            ),
+          if (backgroundChecked) const SizedBox(height: 12),
           // Stats
           Row(
             children: [
-              _StatBox(value: '${walker.walks}', label: 'Total Walks'),
+              _StatBox(
+                  value: '${(_walker?['total_walks'] as num?)?.toInt() ?? 0}',
+                  label: 'Total Walks'),
               const SizedBox(width: 12),
-              _StatBox(value: '5+', label: 'Years Exp'),
+              _StatBox(
+                  value: '$experienceYears yr${experienceYears != 1 ? 's' : ''}',
+                  label: 'Experience'),
               const SizedBox(width: 12),
-              _StatBox(value: walker.responseTime, label: 'Response'),
+              _StatBox(
+                  value: _reviews.isNotEmpty
+                      ? (_walker?['avg_rating'] as num?)?.toStringAsFixed(1) ?? '-'
+                      : '-',
+                  label: 'Avg Rating'),
             ],
           ),
         ],
@@ -382,6 +498,9 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
   }
 
   Widget _buildAboutSection() {
+    final bio = _walker?['bio'] as String?;
+    if (bio == null || bio.isEmpty) return const SizedBox.shrink();
+
     return Container(
       color: AppColors.white,
       padding: const EdgeInsets.all(24),
@@ -398,251 +517,12 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            walker.bio,
+            bio,
             style: GoogleFonts.nunito(
               fontSize: 14,
               fontWeight: FontWeight.w600,
               color: const Color(0xFF666666),
               height: 1.5,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Specialties',
-            style: GoogleFonts.nunito(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: walker.specialties
-                .map((s) => Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppColors.orange50,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        s,
-                        style: GoogleFonts.nunito(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.orange500,
-                        ),
-                      ),
-                    ))
-                .toList(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuickBookSection() {
-    return Container(
-      color: AppColors.white,
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Quick Book',
-            style: GoogleFonts.nunito(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Date Selection
-          Text(
-            'Select Date',
-            style: GoogleFonts.nunito(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 72,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: availableDates.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final d = availableDates[index];
-                final isAvailable = d['available'] as bool;
-                final isSelected = _selectedDate == d['day'];
-                return GestureDetector(
-                  onTap: isAvailable
-                      ? () => setState(() => _selectedDate = d['day'] as String)
-                      : null,
-                  child: Container(
-                    width: 70,
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? AppColors.orange500
-                          : isAvailable
-                              ? AppColors.surface
-                              : AppColors.gray100,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: isSelected
-                          ? [
-                              BoxShadow(
-                                color:
-                                    AppColors.orange500.withValues(alpha: 0.25),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ]
-                          : null,
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          d['date'] as String,
-                          style: GoogleFonts.nunito(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: isSelected
-                                ? Colors.white
-                                : isAvailable
-                                    ? AppColors.textPrimary
-                                    : AppColors.gray400,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          d['day'] as String,
-                          style: GoogleFonts.nunito(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w900,
-                            color: isSelected
-                                ? Colors.white
-                                : isAvailable
-                                    ? AppColors.textPrimary
-                                    : AppColors.gray400,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Time Selection
-          Text(
-            'Select Time',
-            style: GoogleFonts.nunito(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 3,
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 8,
-            childAspectRatio: 2.5,
-            children: availableTimes.map((t) {
-              final isAvailable = t['available'] as bool;
-              final isSelected = _selectedTime == t['time'];
-              return GestureDetector(
-                onTap: isAvailable
-                    ? () =>
-                        setState(() => _selectedTime = t['time'] as String)
-                    : null,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? AppColors.orange500
-                        : isAvailable
-                            ? AppColors.surface
-                            : AppColors.gray100,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: isSelected
-                        ? [
-                            BoxShadow(
-                              color:
-                                  AppColors.orange500.withValues(alpha: 0.25),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: Center(
-                    child: Text(
-                      t['time'] as String,
-                      style: GoogleFonts.nunito(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: isSelected
-                            ? Colors.white
-                            : isAvailable
-                                ? AppColors.textPrimary
-                                : AppColors.gray400,
-                        decoration: !isAvailable
-                            ? TextDecoration.lineThrough
-                            : null,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 16),
-          // Book Button
-          GestureDetector(
-            onTap: (_selectedDate != null && _selectedTime != null)
-                ? () {
-                    // Booking action
-                  }
-                : null,
-            child: Container(
-              height: 56,
-              decoration: BoxDecoration(
-                color: (_selectedDate != null && _selectedTime != null)
-                    ? AppColors.orange500
-                    : const Color(0xFFE5E5E5),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: (_selectedDate != null && _selectedTime != null)
-                    ? [
-                        BoxShadow(
-                          color: AppColors.orange500.withValues(alpha: 0.35),
-                          blurRadius: 20,
-                          offset: const Offset(0, 6),
-                        ),
-                      ]
-                    : null,
-              ),
-              child: Center(
-                child: Text(
-                  (_selectedDate != null && _selectedTime != null)
-                      ? 'Confirm Booking - \$${walker.price}'
-                      : 'Select Date & Time',
-                  style: GoogleFonts.nunito(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: (_selectedDate != null && _selectedTime != null)
-                        ? Colors.white
-                        : AppColors.gray400,
-                  ),
-                ),
-              ),
             ),
           ),
         ],
@@ -651,6 +531,8 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
   }
 
   Widget _buildReviewsSection() {
+    final rating = (_walker?['avg_rating'] as num?)?.toDouble();
+
     return Container(
       color: AppColors.white,
       padding: const EdgeInsets.all(24),
@@ -660,54 +542,46 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Reviews (${walker.reviews})',
+                'Reviews (${_reviews.length})',
                 style: GoogleFonts.nunito(
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
                   color: AppColors.textPrimary,
                 ),
               ),
-              Row(
-                children: [
-                  const Icon(Icons.star, size: 18, color: AppColors.orange500),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${walker.rating}',
-                    style: GoogleFonts.nunito(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.textPrimary,
+              if (rating != null)
+                Row(
+                  children: [
+                    const Icon(Icons.star,
+                        size: 18, color: AppColors.orange500),
+                    const SizedBox(width: 4),
+                    Text(
+                      rating.toStringAsFixed(1),
+                      style: GoogleFonts.nunito(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
             ],
           ),
           const SizedBox(height: 16),
-          ...MockData.reviews.map((review) => _ReviewCard(review: review)),
-          const SizedBox(height: 16),
-          Container(
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'View All Reviews',
-                  style: GoogleFonts.nunito(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
+          if (_reviews.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Text(
+                'No reviews yet',
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
                 ),
-                const SizedBox(width: 8),
-                const Icon(Icons.chevron_right, size: 16),
-              ],
-            ),
-          ),
+              ),
+            )
+          else
+            ..._reviews.map((review) => _ReviewCard(review: review)),
         ],
       ),
     );
@@ -825,12 +699,41 @@ class _StatBox extends StatelessWidget {
 }
 
 class _ReviewCard extends StatelessWidget {
-  final Review review;
+  final Map<String, dynamic> review;
 
   const _ReviewCard({required this.review});
 
+  String _reviewerName() {
+    final users = review['users'];
+    if (users is Map) return users['full_name'] ?? 'Anonymous';
+    return 'Anonymous';
+  }
+
+  String _reviewerInitial() {
+    final name = _reviewerName();
+    return name.isNotEmpty ? name[0].toUpperCase() : 'A';
+  }
+
+  String _timeAgo() {
+    final createdAt = review['created_at'] as String?;
+    if (createdAt == null) return '';
+    try {
+      final date = DateTime.parse(createdAt);
+      final diff = DateTime.now().difference(date);
+      if (diff.inDays > 30) return '${(diff.inDays / 30).floor()} months ago';
+      if (diff.inDays > 0) return '${diff.inDays} days ago';
+      if (diff.inHours > 0) return '${diff.inHours} hours ago';
+      return 'Just now';
+    } catch (_) {
+      return '';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final rating = (review['rating'] as num?)?.toInt() ?? 0;
+    final comment = review['comment'] as String?;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Container(
@@ -851,8 +754,14 @@ class _ReviewCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Center(
-                child:
-                    Text(review.avatar, style: const TextStyle(fontSize: 18)),
+                child: Text(
+                  _reviewerInitial(),
+                  style: GoogleFonts.nunito(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -860,44 +769,13 @@ class _ReviewCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Text(
-                        review.author,
-                        style: GoogleFonts.nunito(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      if (review.verified) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppColors.blue100,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.check,
-                                  size: 10, color: AppColors.blue600),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Verified',
-                                style: GoogleFonts.nunito(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.blue700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ],
+                  Text(
+                    _reviewerName(),
+                    style: GoogleFonts.nunito(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Row(
@@ -907,14 +785,14 @@ class _ReviewCard extends StatelessWidget {
                         (i) => Icon(
                           Icons.star,
                           size: 12,
-                          color: i < review.rating
+                          color: i < rating
                               ? AppColors.orange500
                               : AppColors.gray300,
                         ),
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        review.date,
+                        _timeAgo(),
                         style: GoogleFonts.nunito(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -923,16 +801,18 @@ class _ReviewCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    review.text,
-                    style: GoogleFonts.nunito(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFF666666),
-                      height: 1.5,
+                  if (comment != null && comment.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      comment,
+                      style: GoogleFonts.nunito(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF666666),
+                        height: 1.5,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
