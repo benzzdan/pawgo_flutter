@@ -229,7 +229,10 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
             ),
             child: GestureDetector(
               onTap: () {
-                // Navigate to booking flow (US-026)
+                Navigator.pushNamed(context, '/booking', arguments: {
+                  'walker_id': _walker?['id'],
+                  'walker': _walker,
+                });
               },
               child: Container(
                 height: 56,
