@@ -1,0 +1,5 @@
+package com.pawgo.pawgo
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity()
