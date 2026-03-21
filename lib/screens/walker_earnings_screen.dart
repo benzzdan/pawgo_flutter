@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:pawgo/services/error_handler.dart';
 
 class WalkerEarningsScreen extends StatefulWidget {
   const WalkerEarningsScreen({super.key});
@@ -33,14 +34,18 @@ class _WalkerEarningsScreenState extends State<WalkerEarningsScreen> {
 
     try {
       final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) return;
+      if (userId == null) {
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
+      }
 
       // Get walker profile
-      final walkerRes = await _supabase
+      final walkerRes = await withRetry(() => _supabase
           .from('walkers')
           .select('id, avg_rating, total_walks')
           .eq('user_id', userId)
-          .maybeSingle();
+          .maybeSingle());
 
       if (walkerRes == null) {
         setState(() {
@@ -55,12 +60,12 @@ class _WalkerEarningsScreenState extends State<WalkerEarningsScreen> {
       final totalWalks = (walkerRes['total_walks'] as num?)?.toInt() ?? 0;
 
       // Fetch completed bookings
-      final bookings = await _supabase
+      final bookings = await withRetry(() => _supabase
           .from('bookings')
           .select('*, dogs(name, breed), users!bookings_owner_id_fkey(full_name, avatar_url)')
           .eq('walker_id', walkerId)
           .eq('status', 'walk_completed')
-          .order('completed_at', ascending: false);
+          .order('completed_at', ascending: false));
 
       final bookingsList = List<Map<String, dynamic>>.from(bookings);
 
@@ -80,9 +85,17 @@ class _WalkerEarningsScreenState extends State<WalkerEarningsScreen> {
         _isLoading = false;
       });
     } catch (e) {
+      final appError = AppError.from(e);
+      if (appError.isAuthError) {
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
+      }
       setState(() {
         _isLoading = false;
-        _error = 'Failed to load earnings: $e';
+        _error = appError.isNetworkError
+            ? appError.message
+            : 'Failed to load earnings. Please try again.';
       });
     }
   }

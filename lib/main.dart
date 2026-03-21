@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -19,6 +21,7 @@ import 'package:pawgo/screens/insurance_claim_screen.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:pawgo/services/ad_service.dart';
 import 'package:pawgo/services/analytics_service.dart';
+import 'package:pawgo/services/error_handler.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,6 +38,25 @@ Future<void> main() async {
     apiKey: env.posthogApiKey,
     host: env.posthogHost,
   );
+
+  // Global Flutter framework error handler
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    AnalyticsService.instance.errorOccurred(
+      errorCode: 'flutter_error',
+      message: details.exceptionAsString(),
+    );
+  };
+
+  // Global async error handler
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('Unhandled error: $error\n$stack');
+    AnalyticsService.instance.errorOccurred(
+      errorCode: 'unhandled_error',
+      message: error.toString(),
+    );
+    return true;
+  };
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -60,6 +82,7 @@ class PawgoApp extends StatelessWidget {
 
     return MaterialApp(
       title: 'Pawgo',
+      navigatorKey: ErrorHandler.instance.navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.theme,
       darkTheme: AppTheme.darkTheme,

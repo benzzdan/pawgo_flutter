@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/analytics_service.dart';
+import 'package:pawgo/services/error_handler.dart';
 
 class BookingScreen extends StatefulWidget {
   const BookingScreen({super.key});
@@ -50,12 +51,16 @@ class _BookingScreenState extends State<BookingScreen> {
   Future<void> _fetchDogs() async {
     try {
       final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) return;
+      if (userId == null) {
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
+      }
 
-      final data = await _supabase
+      final data = await withRetry(() => _supabase
           .from('dogs')
           .select('id, name, breed, age_years, weight_kg, photo_url')
-          .eq('owner_id', userId);
+          .eq('owner_id', userId));
 
       setState(() {
         _dogs = List<Map<String, dynamic>>.from(data);
@@ -65,6 +70,13 @@ class _BookingScreenState extends State<BookingScreen> {
         }
       });
     } catch (e) {
+      if (!mounted) return;
+      final appError = AppError.from(e);
+      if (appError.isAuthError) {
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
+      }
       setState(() {
         _dogsError = 'Failed to load dogs';
         _loadingDogs = false;
@@ -134,7 +146,7 @@ class _BookingScreenState extends State<BookingScreen> {
     setState(() => _submitting = true);
 
     try {
-      final response = await _supabase.functions.invoke(
+      final response = await withRetry(() => _supabase.functions.invoke(
         'create-booking',
         body: {
           'walker_id': _walkerId,
@@ -143,7 +155,7 @@ class _BookingScreenState extends State<BookingScreen> {
           'duration_minutes': _durationMinutes,
           'notes': _notes.isNotEmpty ? _notes : null,
         },
-      );
+      ));
 
       if (!mounted) return;
 
@@ -152,21 +164,22 @@ class _BookingScreenState extends State<BookingScreen> {
         AnalyticsService.instance.bookingInitiated(walkerId: _walkerId!);
         _navigateToPayment(bookingId);
       } else {
-        final error = response.data?['error']?['message'] ?? 'Booking failed';
-        _showError(error);
-        AnalyticsService.instance.errorOccurred(
-          errorCode: 'booking_failed',
-          message: error,
+        ErrorHandler.instance.handleFunctionError(
+          context,
+          response,
           screen: 'booking',
+          blocking: true,
+          fallbackMessage: 'Booking failed. Please try again.',
         );
       }
     } catch (e) {
       if (!mounted) return;
-      _showError('Failed to create booking. Please try again.');
-      AnalyticsService.instance.errorOccurred(
-        errorCode: 'booking_error',
-        message: e.toString(),
+      ErrorHandler.instance.handleError(
+        context,
+        e,
         screen: 'booking',
+        blocking: true,
+        fallbackMessage: 'Failed to create booking. Please try again.',
       );
     } finally {
       if (mounted) setState(() => _submitting = false);

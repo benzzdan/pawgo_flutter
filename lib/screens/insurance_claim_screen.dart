@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/analytics_service.dart';
+import 'package:pawgo/services/error_handler.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class InsuranceClaimScreen extends StatefulWidget {
@@ -54,12 +55,7 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
   Future<void> _submitClaim() async {
     if (!_formKey.currentState!.validate()) return;
     if (_claimType == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select a claim type'),
-          backgroundColor: AppColors.orange500,
-        ),
-      );
+      ErrorHandler.instance.showRecoverableError(context, 'Please select a claim type');
       return;
     }
 
@@ -67,20 +63,25 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
 
     try {
       final userId = _supabase.auth.currentUser?.id;
-      if (userId == null || _bookingId == null) {
-        throw Exception('Missing required data');
+      if (userId == null) {
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
+      }
+      if (_bookingId == null) {
+        throw Exception('Missing booking data');
       }
 
       final amount = double.parse(_amountController.text.trim());
 
-      await _supabase.from('insurance_claims').insert({
+      await withRetry(() => _supabase.from('insurance_claims').insert({
         'booking_id': _bookingId,
         'claimant_id': userId,
         'claim_type': _claimType,
         'description': _descriptionController.text.trim(),
         'amount_mxn': amount,
         'status': 'open',
-      });
+      }));
 
       if (!mounted) return;
       setState(() {
@@ -104,18 +105,14 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
 
-      AnalyticsService.instance.errorOccurred(
-        errorCode: 'insurance_claim_error',
-        message: e.toString(),
-        screen: 'insurance_claim',
-      );
+      final appError = AppError.from(e);
+      if (appError.isAuthError) {
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
+      }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to submit claim: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      ErrorHandler.instance.handleError(context, e, screen: 'insurance_claim');
     }
   }
 

@@ -3,6 +3,7 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/services/analytics_service.dart';
+import 'package:pawgo/services/error_handler.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -64,17 +65,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
         _showConfirmationDialog();
       }
     } on AuthException catch (e) {
-      setState(() => _error = e.message);
+      final appError = AppError.from(e);
+      setState(() => _error = appError.message);
       AnalyticsService.instance.errorOccurred(
-        errorCode: 'auth_error',
-        message: e.message,
+        errorCode: appError.code,
+        message: appError.message,
         screen: 'sign_up',
       );
     } catch (e) {
-      setState(() => _error = 'An unexpected error occurred');
+      final appError = AppError.from(e);
+      setState(() => _error = appError.isNetworkError
+          ? appError.message
+          : 'An unexpected error occurred. Please try again.');
       AnalyticsService.instance.errorOccurred(
-        errorCode: 'unexpected_error',
-        message: e.toString(),
+        errorCode: appError.code,
+        message: appError.message,
         screen: 'sign_up',
       );
     } finally {

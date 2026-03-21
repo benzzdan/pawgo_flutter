@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
+import 'package:pawgo/services/error_handler.dart';
 
 class ActiveWalkScreen extends StatefulWidget {
   const ActiveWalkScreen({super.key});
@@ -91,17 +92,22 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
   Future<void> _loadBookingData() async {
     if (_bookingId == null) return;
     try {
-      final data = await Supabase.instance.client
+      final data = await withRetry(() => Supabase.instance.client
           .from('bookings')
           .select('*, walkers(id, user_id, users(full_name, avatar_url)), dogs(name)')
           .eq('id', _bookingId!)
-          .single();
+          .single());
       if (!mounted) return;
 
       // Check if current user is the walker for this booking
       final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+      if (currentUserId == null) {
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
+      }
       final walkerUserId = data['walkers']?['user_id'] as String?;
-      final isWalker = currentUserId != null && currentUserId == walkerUserId;
+      final isWalker = currentUserId == walkerUserId;
 
       _walkerId = data['walkers']?['id'] as String?;
 
@@ -129,7 +135,15 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
         _startGpsBroadcast();
       }
     } catch (e) {
-      debugPrint('Error loading booking: $e');
+      final appError = AppError.from(e);
+      if (appError.isAuthError) {
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
+      }
+      if (mounted) {
+        ErrorHandler.instance.handleError(context, e, screen: 'active_walk');
+      }
     }
   }
 
@@ -137,10 +151,9 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
     if (_bookingId == null) return;
     final started = await _gpsBroadcast.startBroadcasting(_bookingId!);
     if (!started && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not access GPS. Please enable location services.'),
-        ),
+      ErrorHandler.instance.showRecoverableError(
+        context,
+        'Could not access GPS. Please enable location services.',
       );
     }
   }
@@ -185,11 +198,11 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
   Future<void> _loadExistingLocations() async {
     if (_bookingId == null) return;
     try {
-      final data = await Supabase.instance.client
+      final data = await withRetry(() => Supabase.instance.client
           .from('walk_locations')
           .select('lat, lng, recorded_at')
           .eq('booking_id', _bookingId!)
-          .order('recorded_at', ascending: true);
+          .order('recorded_at', ascending: true));
 
       if (!mounted) return;
       if (data.isNotEmpty) {
@@ -205,6 +218,12 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
         _animateToCurrentPosition();
       }
     } catch (e) {
+      final appError = AppError.from(e);
+      if (appError.isAuthError) {
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
+      }
       debugPrint('Error loading locations: $e');
     }
   }

@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
+import 'package:pawgo/services/error_handler.dart';
 
 class WalkerChatScreen extends StatefulWidget {
   const WalkerChatScreen({super.key});
@@ -33,6 +34,11 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
     super.didChangeDependencies();
     if (_bookingId != null) return;
     _currentUserId = _supabase.auth.currentUser?.id;
+    if (_currentUserId == null) {
+      ErrorHandler.instance.navigatorKey.currentState
+          ?.pushNamedAndRemoveUntil('/', (route) => false);
+      return;
+    }
     final args =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     if (args != null) {
@@ -55,11 +61,11 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
 
   Future<void> _fetchMessages() async {
     try {
-      final data = await _supabase
+      final data = await withRetry(() => _supabase
           .from('messages')
           .select('*, users(full_name, avatar_url)')
           .eq('booking_id', _bookingId!)
-          .order('created_at', ascending: true);
+          .order('created_at', ascending: true));
 
       if (mounted) {
         setState(() {
@@ -70,6 +76,12 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final appError = AppError.from(e);
+        if (appError.isAuthError) {
+          ErrorHandler.instance.navigatorKey.currentState
+              ?.pushNamedAndRemoveUntil('/', (route) => false);
+          return;
+        }
         setState(() => _isLoading = false);
       }
     }
@@ -158,9 +170,13 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to send message')),
-        );
+        final appError = AppError.from(e);
+        if (appError.isAuthError) {
+          ErrorHandler.instance.navigatorKey.currentState
+              ?.pushNamedAndRemoveUntil('/', (route) => false);
+          return;
+        }
+        ErrorHandler.instance.showRecoverableError(context, 'Failed to send message');
       }
     } finally {
       if (mounted) setState(() => _isSending = false);
@@ -204,9 +220,13 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
       // it will arrive via the Realtime subscription
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to upload media')),
-        );
+        final appError = AppError.from(e);
+        if (appError.isAuthError) {
+          ErrorHandler.instance.navigatorKey.currentState
+              ?.pushNamedAndRemoveUntil('/', (route) => false);
+          return;
+        }
+        ErrorHandler.instance.showRecoverableError(context, 'Failed to upload media');
       }
     } finally {
       if (mounted) setState(() => _isUploading = false);
@@ -257,9 +277,13 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to send status update')),
-        );
+        final appError = AppError.from(e);
+        if (appError.isAuthError) {
+          ErrorHandler.instance.navigatorKey.currentState
+              ?.pushNamedAndRemoveUntil('/', (route) => false);
+          return;
+        }
+        ErrorHandler.instance.showRecoverableError(context, 'Failed to send status update');
       }
     } finally {
       if (mounted) setState(() => _isSending = false);

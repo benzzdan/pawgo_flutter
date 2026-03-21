@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pawgo/services/analytics_service.dart';
+import 'package:pawgo/services/error_handler.dart';
 
 class WalkerBookingsScreen extends StatefulWidget {
   const WalkerBookingsScreen({super.key});
@@ -40,14 +41,18 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
 
     try {
       final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) return;
+      if (userId == null) {
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
+      }
 
       // Get walker profile for current user
-      final walkerRes = await _supabase
+      final walkerRes = await withRetry(() => _supabase
           .from('walkers')
           .select('id')
           .eq('user_id', userId)
-          .maybeSingle();
+          .maybeSingle());
 
       if (walkerRes == null) {
         setState(() {
@@ -60,12 +65,12 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
       _walkerId = walkerRes['id'] as String;
 
       // Fetch bookings assigned to this walker with relevant statuses
-      final bookings = await _supabase
+      final bookings = await withRetry(() => _supabase
           .from('bookings')
           .select('*, dogs(name, breed), users!bookings_owner_id_fkey(full_name, avatar_url)')
           .eq('walker_id', _walkerId!)
           .inFilter('status', ['confirmed', 'walker_en_route', 'walk_started'])
-          .order('scheduled_at', ascending: true);
+          .order('scheduled_at', ascending: true));
 
       setState(() {
         _bookings = List<Map<String, dynamic>>.from(bookings);
@@ -74,9 +79,18 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
 
       _subscribeToBookings();
     } catch (e) {
+      if (!mounted) return;
+      final appError = AppError.from(e);
+      if (appError.isAuthError) {
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
+      }
       setState(() {
         _isLoading = false;
-        _error = 'Failed to load bookings: $e';
+        _error = appError.isNetworkError
+            ? 'No internet connection. Please check your network.'
+            : 'Failed to load bookings';
       });
     }
   }
@@ -123,37 +137,29 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
 
   Future<void> _startWalk(String bookingId) async {
     try {
-      final res = await _supabase.functions.invoke(
+      final res = await withRetry(() => _supabase.functions.invoke(
         'start-walk',
         body: {'booking_id': bookingId},
-      );
+      ));
 
+      if (!mounted) return;
       if (res.status != 200) {
-        final data = res.data;
-        final error = data is Map ? (data['error']?['message'] ?? 'Failed to start walk') : 'Failed to start walk';
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(error.toString()), backgroundColor: Colors.red),
-          );
-        }
-        AnalyticsService.instance.errorOccurred(
-          errorCode: 'start_walk_failed',
-          message: error.toString(),
+        ErrorHandler.instance.handleFunctionError(
+          context,
+          res,
           screen: 'walker_bookings',
+          fallbackMessage: 'Failed to start walk',
         );
       } else {
         AnalyticsService.instance.walkStarted(bookingId: bookingId);
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-        );
-      }
-      AnalyticsService.instance.errorOccurred(
-        errorCode: 'start_walk_error',
-        message: e.toString(),
+      if (!mounted) return;
+      ErrorHandler.instance.handleError(
+        context,
+        e,
         screen: 'walker_bookings',
+        fallbackMessage: 'Failed to start walk. Please try again.',
       );
     }
   }
@@ -182,42 +188,30 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
     if (confirm != true) return;
 
     try {
-      final res = await _supabase.functions.invoke(
+      final res = await withRetry(() => _supabase.functions.invoke(
         'end-walk',
         body: {'booking_id': bookingId},
-      );
+      ));
 
+      if (!mounted) return;
       if (res.status != 200) {
-        final data = res.data;
-        final error = data is Map ? (data['error']?['message'] ?? 'Failed to end walk') : 'Failed to end walk';
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(error.toString()), backgroundColor: Colors.red),
-          );
-        }
-        AnalyticsService.instance.errorOccurred(
-          errorCode: 'end_walk_failed',
-          message: error.toString(),
+        ErrorHandler.instance.handleFunctionError(
+          context,
+          res,
           screen: 'walker_bookings',
+          fallbackMessage: 'Failed to end walk',
         );
       } else {
         AnalyticsService.instance.walkCompleted(bookingId: bookingId);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Walk completed!'), backgroundColor: AppColors.green600),
-          );
-        }
+        ErrorHandler.instance.showRecoverableError(context, 'Walk completed!');
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-        );
-      }
-      AnalyticsService.instance.errorOccurred(
-        errorCode: 'end_walk_error',
-        message: e.toString(),
+      if (!mounted) return;
+      ErrorHandler.instance.handleError(
+        context,
+        e,
         screen: 'walker_bookings',
+        fallbackMessage: 'Failed to end walk. Please try again.',
       );
     }
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pawgo/services/error_handler.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -270,9 +271,13 @@ class _EmailLoginFormState extends State<_EmailLoginForm> {
         Navigator.pushReplacementNamed(context, '/home');
       }
     } on AuthException catch (e) {
-      setState(() => _error = e.message);
+      final appError = AppError.from(e);
+      setState(() => _error = appError.message);
     } catch (e) {
-      setState(() => _error = 'An unexpected error occurred');
+      final appError = AppError.from(e);
+      setState(() => _error = appError.isNetworkError
+          ? appError.message
+          : 'An unexpected error occurred. Please try again.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -390,9 +395,13 @@ class _PhoneLoginFormState extends State<_PhoneLoginForm> {
       await Supabase.instance.client.auth.signInWithOtp(phone: phone);
       setState(() => _otpSent = true);
     } on AuthException catch (e) {
-      setState(() => _error = e.message);
+      final appError = AppError.from(e);
+      setState(() => _error = appError.message);
     } catch (e) {
-      setState(() => _error = 'Failed to send OTP');
+      final appError = AppError.from(e);
+      setState(() => _error = appError.isNetworkError
+          ? appError.message
+          : 'Failed to send OTP. Please try again.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -419,9 +428,13 @@ class _PhoneLoginFormState extends State<_PhoneLoginForm> {
         Navigator.pushReplacementNamed(context, '/home');
       }
     } on AuthException catch (e) {
-      setState(() => _error = e.message);
+      final appError = AppError.from(e);
+      setState(() => _error = appError.message);
     } catch (e) {
-      setState(() => _error = 'Failed to verify code');
+      final appError = AppError.from(e);
+      setState(() => _error = appError.isNetworkError
+          ? appError.message
+          : 'Failed to verify code. Please try again.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }

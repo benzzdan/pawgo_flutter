@@ -4,6 +4,7 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:pawgo/services/error_handler.dart';
 
 class BookingsScreen extends StatefulWidget {
   const BookingsScreen({super.key});
@@ -41,13 +42,18 @@ class _BookingsScreenState extends State<BookingsScreen> {
     });
 
     try {
-      final userId = _supabase.auth.currentUser!.id;
-      final data = await _supabase
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) {
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
+      }
+      final data = await withRetry(() => _supabase
           .from('bookings')
           .select(
               '*, walkers(id, user_id, users(full_name, avatar_url)), dogs(name, breed, photo_url)')
           .eq('owner_id', userId)
-          .order('scheduled_at', ascending: false);
+          .order('scheduled_at', ascending: false));
 
       if (!mounted) return;
       setState(() {
@@ -56,15 +62,22 @@ class _BookingsScreenState extends State<BookingsScreen> {
       });
     } catch (e) {
       if (!mounted) return;
+      final appError = AppError.from(e);
+      if (appError.isAuthError) {
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
+      }
       setState(() {
-        _error = e.toString();
+        _error = appError.message;
         _isLoading = false;
       });
     }
   }
 
   void _subscribeToUpdates() {
-    final userId = _supabase.auth.currentUser!.id;
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
     _channel = _supabase.channel('bookings_owner_$userId');
     _channel!.onPostgresChanges(
       event: PostgresChangeEvent.update,
@@ -303,10 +316,10 @@ class _BookingsScreenState extends State<BookingsScreen> {
 
   Future<List<Map<String, dynamic>>> _fetchClaims(String bookingId) async {
     try {
-      final data = await _supabase
+      final data = await withRetry(() => _supabase
           .from('insurance_claims')
           .select('id, claim_type, status, amount_mxn')
-          .eq('booking_id', bookingId);
+          .eq('booking_id', bookingId));
       return List<Map<String, dynamic>>.from(data);
     } catch (_) {
       return [];

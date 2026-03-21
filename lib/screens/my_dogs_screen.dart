@@ -4,6 +4,7 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:pawgo/services/error_handler.dart';
 
 class MyDogsScreen extends StatefulWidget {
   const MyDogsScreen({super.key});
@@ -31,19 +32,29 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
     });
     try {
       final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) return;
-      final data = await _supabase
+      if (userId == null) {
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
+      }
+      final data = await withRetry(() => _supabase
           .from('dogs')
           .select()
           .eq('owner_id', userId)
-          .order('created_at', ascending: false);
+          .order('created_at', ascending: false));
       setState(() {
         _dogs = List<Map<String, dynamic>>.from(data);
         _loading = false;
       });
     } catch (e) {
+      final appError = AppError.from(e);
+      if (appError.isAuthError) {
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
+      }
       setState(() {
-        _error = e.toString();
+        _error = appError.message;
         _loading = false;
       });
     }
@@ -538,7 +549,11 @@ class _DogFormScreenState extends State<_DogFormScreen> {
 
     try {
       final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) throw Exception('Not authenticated');
+      if (userId == null) {
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
+      }
 
       final ageText = _ageController.text.trim();
       final weightText = _weightController.text.trim();
@@ -559,10 +574,10 @@ class _DogFormScreenState extends State<_DogFormScreen> {
       if (_isEditing) {
         dogId = widget.dog!['id'] as String;
         record.remove('owner_id');
-        await _supabase.from('dogs').update(record).eq('id', dogId);
+        await withRetry(() => _supabase.from('dogs').update(record).eq('id', dogId));
       } else {
         final result =
-            await _supabase.from('dogs').insert(record).select().single();
+            await withRetry(() => _supabase.from('dogs').insert(record).select().single());
         dogId = result['id'] as String;
       }
 
@@ -580,9 +595,13 @@ class _DogFormScreenState extends State<_DogFormScreen> {
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save: $e')),
-        );
+        final appError = AppError.from(e);
+        if (appError.isAuthError) {
+          ErrorHandler.instance.navigatorKey.currentState
+              ?.pushNamedAndRemoveUntil('/', (route) => false);
+          return;
+        }
+        ErrorHandler.instance.handleError(context, e, screen: 'my_dogs');
       }
     } finally {
       if (mounted) setState(() => _saving = false);

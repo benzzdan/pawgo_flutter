@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/services/ad_service.dart';
+import 'package:pawgo/services/error_handler.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -44,11 +45,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _fetchWalkers() async {
     try {
-      final data = await Supabase.instance.client
+      final data = await withRetry(() => Supabase.instance.client
           .from('walkers')
           .select('id, user_id, bio, experience_years, hourly_rate_mxn, avg_rating, total_walks, users(full_name, avatar_url)')
           .eq('is_enabled', true)
-          .order('avg_rating', ascending: false);
+          .order('avg_rating', ascending: false));
 
       if (!mounted) return;
       setState(() {
@@ -57,8 +58,16 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     } catch (e) {
       if (!mounted) return;
+      final appError = AppError.from(e);
+      if (appError.isAuthError) {
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
+      }
       setState(() {
-        _error = e.toString();
+        _error = appError.isNetworkError
+            ? 'No internet connection'
+            : 'Could not load walkers';
         _loading = false;
       });
     }

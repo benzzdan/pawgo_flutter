@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/config/env.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/analytics_service.dart';
+import 'package:pawgo/services/error_handler.dart';
 
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({super.key});
@@ -47,10 +48,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
-        setState(() {
-          _error = 'Not authenticated';
-          _initializing = false;
-        });
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
         return;
       }
 
@@ -127,14 +126,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   Future<void> _confirmPaymentDirectly() async {
     try {
-      final response = await _supabase.functions.invoke(
+      final response = await withRetry(() => _supabase.functions.invoke(
         'confirm-payment',
         body: {
           'booking_id': _bookingId,
           'amount': _totalPrice,
           'currency': 'MXN',
         },
-      );
+      ));
 
       if (!mounted) return;
 
@@ -145,21 +144,28 @@ class _PaymentScreenState extends State<PaymentScreen> {
         });
         AnalyticsService.instance.bookingCompleted(bookingId: _bookingId!);
       } else {
-        final errorMsg =
-            response.data?['error']?['message'] ?? 'Payment confirmation failed';
+        final appError = AppError.fromFunctionResponse(response);
         setState(() {
-          _error = errorMsg;
+          _error = appError.message;
           _processing = false;
         });
         AnalyticsService.instance.paymentFailed(
           bookingId: _bookingId!,
-          error: errorMsg,
+          error: appError.message,
         );
       }
     } catch (e) {
       if (!mounted) return;
+      final appError = AppError.from(e);
+      if (appError.isAuthError) {
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
+      }
       setState(() {
-        _error = 'Failed to confirm payment. Please try again.';
+        _error = appError.isNetworkError
+            ? appError.message
+            : 'Failed to confirm payment. Please try again.';
         _processing = false;
       });
     }

@@ -4,6 +4,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/ad_service.dart';
 import 'package:pawgo/services/analytics_service.dart';
+import 'package:pawgo/services/error_handler.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class ReviewScreen extends StatefulWidget {
@@ -61,12 +62,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
   Future<void> _submitReview() async {
     if (_rating == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select a rating'),
-          backgroundColor: AppColors.orange500,
-        ),
-      );
+      ErrorHandler.instance.showRecoverableError(context, 'Please select a rating');
       return;
     }
 
@@ -75,18 +71,20 @@ class _ReviewScreenState extends State<ReviewScreen> {
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null || _bookingId == null || _walkerId == null) {
-        throw Exception('Missing required data');
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
       }
 
       final comment = _commentController.text.trim();
 
-      await _supabase.from('reviews').insert({
+      await withRetry(() => _supabase.from('reviews').insert({
         'booking_id': _bookingId,
         'reviewer_id': userId,
         'walker_id': _walkerId,
         'rating': _rating,
         if (comment.isNotEmpty) 'comment': comment,
-      });
+      }));
 
       if (!mounted) return;
       setState(() {
@@ -124,17 +122,16 @@ class _ReviewScreenState extends State<ReviewScreen> {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
 
-      AnalyticsService.instance.errorOccurred(
-        errorCode: 'review_error',
-        message: e.toString(),
-        screen: 'review',
-      );
-      final message = e.toString().contains('duplicate')
+      final isDuplicate = e.toString().contains('duplicate');
+      final message = isDuplicate
           ? 'You have already reviewed this walk'
-          : 'Failed to submit review: $e';
+          : 'Failed to submit review. Please try again.';
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: Colors.red),
+      ErrorHandler.instance.handleError(
+        context,
+        e,
+        screen: 'review',
+        fallbackMessage: message,
       );
     }
   }

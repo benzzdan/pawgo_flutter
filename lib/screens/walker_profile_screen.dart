@@ -3,6 +3,7 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/services/analytics_service.dart';
+import 'package:pawgo/services/error_handler.dart';
 
 class WalkerProfileScreen extends StatefulWidget {
   const WalkerProfileScreen({super.key});
@@ -38,19 +39,19 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
     try {
       final supabase = Supabase.instance.client;
 
-      final walkerResponse = await supabase
+      final walkerResponse = await withRetry(() => supabase
           .from('walkers')
           .select(
               'id, user_id, bio, experience_years, hourly_rate_mxn, background_checked, is_enabled, avg_rating, total_walks, users(full_name, avatar_url)')
           .eq('id', walkerId)
-          .single();
+          .single());
 
-      final reviewsResponse = await supabase
+      final reviewsResponse = await withRetry(() => supabase
           .from('reviews')
           .select(
               'id, rating, comment, created_at, reviewer_id, users(full_name, avatar_url)')
           .eq('walker_id', walkerId)
-          .order('created_at', ascending: false);
+          .order('created_at', ascending: false));
 
       if (mounted) {
         setState(() {
@@ -62,8 +63,16 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final appError = AppError.from(e);
+        if (appError.isAuthError) {
+          ErrorHandler.instance.navigatorKey.currentState
+              ?.pushNamedAndRemoveUntil('/', (route) => false);
+          return;
+        }
         setState(() {
-          _error = 'Failed to load walker profile';
+          _error = appError.isNetworkError
+              ? 'No internet connection'
+              : 'Failed to load walker profile';
           _isLoading = false;
         });
       }
