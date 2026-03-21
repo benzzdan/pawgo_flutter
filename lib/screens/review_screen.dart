@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:pawgo/theme/app_theme.dart';
+import 'package:pawgo/services/ad_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class ReviewScreen extends StatefulWidget {
@@ -20,6 +22,21 @@ class _ReviewScreenState extends State<ReviewScreen> {
   int _rating = 0;
   bool _isSubmitting = false;
   bool _submitted = false;
+  InterstitialAd? _interstitialAd;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInterstitialAd();
+  }
+
+  void _loadInterstitialAd() {
+    AdService.instance.loadInterstitialAd(
+      onLoaded: (ad) {
+        _interstitialAd = ad;
+      },
+    );
+  }
 
   @override
   void didChangeDependencies() {
@@ -36,6 +53,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
   @override
   void dispose() {
+    _interstitialAd?.dispose();
     _commentController.dispose();
     super.dispose();
   }
@@ -75,9 +93,26 @@ class _ReviewScreenState extends State<ReviewScreen> {
         _submitted = true;
       });
 
-      // Auto-navigate back after showing success
+      // Show interstitial ad for free-tier users, then navigate back
       Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) Navigator.pop(context);
+        if (!mounted) return;
+        if (_interstitialAd != null) {
+          _interstitialAd!.fullScreenContentCallback =
+              FullScreenContentCallback(
+            onAdDismissedFullScreenContent: (ad) {
+              ad.dispose();
+              if (mounted) Navigator.pop(context);
+            },
+            onAdFailedToShowFullScreenContent: (ad, _) {
+              ad.dispose();
+              if (mounted) Navigator.pop(context);
+            },
+          );
+          _interstitialAd!.show();
+          _interstitialAd = null;
+        } else {
+          Navigator.pop(context);
+        }
       });
     } catch (e) {
       if (!mounted) return;

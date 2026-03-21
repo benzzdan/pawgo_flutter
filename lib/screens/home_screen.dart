@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/widgets/stat_card.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pawgo/services/ad_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,11 +17,29 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> _walkers = [];
   bool _loading = true;
   String? _error;
+  BannerAd? _bannerAd;
+  bool _isBannerAdLoaded = false;
 
   @override
   void initState() {
     super.initState();
     _fetchWalkers();
+    _loadBannerAd();
+  }
+
+  void _loadBannerAd() {
+    final ad = AdService.instance.createBannerAd(
+      onLoaded: () {
+        if (mounted) setState(() => _isBannerAdLoaded = true);
+      },
+    );
+    if (ad != null) _bannerAd = ad;
+  }
+
+  @override
+  void dispose() {
+    _bannerAd?.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchWalkers() async {
@@ -175,6 +195,19 @@ class _HomeScreenState extends State<HomeScreen> {
             // Walkers list from Supabase
             _buildWalkersList(),
             const SizedBox(height: 20),
+
+            // Banner Ad (free-tier only)
+            if (_isBannerAdLoaded && _bannerAd != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 20),
+                child: Center(
+                  child: SizedBox(
+                    width: _bannerAd!.size.width.toDouble(),
+                    height: _bannerAd!.size.height.toDouble(),
+                    child: AdWidget(ad: _bannerAd!),
+                  ),
+                ),
+              ),
 
             // Upcoming Walks
             Padding(

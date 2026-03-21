@@ -16,6 +16,7 @@ import 'package:pawgo/screens/walker_bookings_screen.dart';
 import 'package:pawgo/screens/review_screen.dart';
 import 'package:pawgo/screens/walker_earnings_screen.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
+import 'package:pawgo/services/ad_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,6 +26,8 @@ Future<void> main() async {
     url: env.supabaseUrl,
     anonKey: env.supabaseAnonKey,
   );
+
+  await AdService.instance.initialize();
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
