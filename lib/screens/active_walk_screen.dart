@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -11,27 +14,198 @@ class ActiveWalkScreen extends StatefulWidget {
 }
 
 class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
-  int _elapsedTime = 18;
-  double _distance = 1.2;
+  // Map state
+  GoogleMapController? _mapController;
+  final List<LatLng> _routePoints = [];
+  LatLng? _currentPosition;
+  // Booking data
+  String? _bookingId;
+  String? _walkerName;
+  String? _dogName;
+
+  // Walk stats
+  int _elapsedMinutes = 0;
+  Timer? _elapsedTimer;
+
+  // Realtime subscription
+  RealtimeChannel? _locationChannel;
+
+  // GPS signal state
+  bool _gpsSignalLost = false;
+  Timer? _gpsTimeoutTimer;
+  static const _gpsTimeoutDuration = Duration(seconds: 30);
+
+  // Tab state
   String _activeTab = 'updates';
-  Timer? _timer;
+
+  // Status updates from realtime
+  final List<Map<String, dynamic>> _liveUpdates = [];
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(minutes: 1), (_) {
-      setState(() {
-        _elapsedTime++;
-        _distance = double.parse((_distance + 0.05).toStringAsFixed(2));
-      });
-    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_bookingId != null) return;
+
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map<String, dynamic>) {
+      _bookingId = args['booking_id'] as String?;
+      _walkerName = args['walker_name'] as String?;
+      _dogName = args['dog_name'] as String?;
+    } else if (args is String) {
+      _bookingId = args;
+    }
+
+    if (_bookingId != null) {
+      _loadBookingData();
+      _loadExistingLocations();
+      _subscribeToLocations();
+    }
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _elapsedTimer?.cancel();
+    _gpsTimeoutTimer?.cancel();
+    _locationChannel?.unsubscribe();
+    _mapController?.dispose();
     super.dispose();
   }
+
+  Future<void> _loadBookingData() async {
+    if (_bookingId == null) return;
+    try {
+      final data = await Supabase.instance.client
+          .from('bookings')
+          .select('*, walkers(id, user_id, users(full_name, avatar_url)), dogs(name)')
+          .eq('id', _bookingId!)
+          .single();
+      if (!mounted) return;
+      setState(() {
+        _walkerName ??= data['walkers']?['users']?['full_name'] as String? ?? 'Walker';
+        _dogName ??= data['dogs']?['name'] as String? ?? 'Your dog';
+        // Calculate elapsed time from started_at
+        final startedAt = data['started_at'] as String?;
+        if (startedAt != null) {
+          final start = DateTime.parse(startedAt);
+          _elapsedMinutes = DateTime.now().difference(start).inMinutes;
+          _startElapsedTimer();
+        }
+      });
+    } catch (e) {
+      debugPrint('Error loading booking: $e');
+    }
+  }
+
+  void _startElapsedTimer() {
+    _elapsedTimer?.cancel();
+    _elapsedTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted) return;
+      setState(() => _elapsedMinutes++);
+    });
+  }
+
+  Future<void> _loadExistingLocations() async {
+    if (_bookingId == null) return;
+    try {
+      final data = await Supabase.instance.client
+          .from('walk_locations')
+          .select('lat, lng, recorded_at')
+          .eq('booking_id', _bookingId!)
+          .order('recorded_at', ascending: true);
+
+      if (!mounted) return;
+      if (data.isNotEmpty) {
+        setState(() {
+          for (final point in data) {
+            final lat = (point['lat'] as num).toDouble();
+            final lng = (point['lng'] as num).toDouble();
+            _routePoints.add(LatLng(lat, lng));
+          }
+          _currentPosition = _routePoints.last;
+          _resetGpsTimeout();
+        });
+        _animateToCurrentPosition();
+      }
+    } catch (e) {
+      debugPrint('Error loading locations: $e');
+    }
+  }
+
+  void _subscribeToLocations() {
+    if (_bookingId == null) return;
+
+    _locationChannel = Supabase.instance.client
+        .channel('walk_locations_$_bookingId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'walk_locations',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'booking_id',
+            value: _bookingId!,
+          ),
+          callback: (payload) {
+            final newRecord = payload.newRecord;
+            final lat = (newRecord['lat'] as num).toDouble();
+            final lng = (newRecord['lng'] as num).toDouble();
+            final newPoint = LatLng(lat, lng);
+
+            if (!mounted) return;
+            setState(() {
+              _routePoints.add(newPoint);
+              _currentPosition = newPoint;
+              _gpsSignalLost = false;
+              _resetGpsTimeout();
+            });
+            _animateToCurrentPosition();
+          },
+        )
+        .subscribe();
+  }
+
+  void _resetGpsTimeout() {
+    _gpsTimeoutTimer?.cancel();
+    _gpsTimeoutTimer = Timer(_gpsTimeoutDuration, () {
+      if (!mounted) return;
+      setState(() => _gpsSignalLost = true);
+    });
+  }
+
+  void _animateToCurrentPosition() {
+    if (_currentPosition != null && _mapController != null) {
+      _mapController!.animateCamera(
+        CameraUpdate.newLatLng(_currentPosition!),
+      );
+    }
+  }
+
+  double _calculateDistanceKm() {
+    if (_routePoints.length < 2) return 0;
+    double total = 0;
+    for (int i = 1; i < _routePoints.length; i++) {
+      total += _haversineDistance(_routePoints[i - 1], _routePoints[i]);
+    }
+    return total;
+  }
+
+  double _haversineDistance(LatLng a, LatLng b) {
+    const r = 6371.0; // Earth radius in km
+    final dLat = _toRad(b.latitude - a.latitude);
+    final dLng = _toRad(b.longitude - a.longitude);
+    final sinDLat = sin(dLat / 2);
+    final sinDLng = sin(dLng / 2);
+    final h = sinDLat * sinDLat +
+        cos(_toRad(a.latitude)) * cos(_toRad(b.latitude)) * sinDLng * sinDLng;
+    return 2 * r * asin(sqrt(h));
+  }
+
+  double _toRad(double deg) => deg * (3.14159265358979323846 / 180);
 
   @override
   Widget build(BuildContext context) {
@@ -41,73 +215,19 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
         child: Column(
           children: [
             // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Active Walk',
-                        style: GoogleFonts.nunito(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Live tracking',
-                        style: GoogleFonts.nunito(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: AppColors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
-                            blurRadius: 8,
-                          ),
-                        ],
-                      ),
-                      child: const Center(
-                        child: Text('\u{2715}', style: TextStyle(fontSize: 18)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            _buildHeader(),
             Expanded(
               child: SingleChildScrollView(
                 child: Column(
                   children: [
-                    // Map Area
                     _buildMapArea(),
                     const SizedBox(height: 16),
-                    // Walker Info
                     _buildWalkerInfo(),
                     const SizedBox(height: 16),
-                    // Stats Grid
                     _buildStatsGrid(),
                     const SizedBox(height: 16),
-                    // Tab Navigation
                     _buildTabNav(),
                     const SizedBox(height: 16),
-                    // Tab Content
                     _buildTabContent(),
                     const SizedBox(height: 24),
                   ],
@@ -120,21 +240,68 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
     );
   }
 
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Active Walk',
+                style: GoogleFonts.nunito(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Live tracking',
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppColors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 8,
+                  ),
+                ],
+              ),
+              child: const Center(
+                child: Text('\u{2715}', style: TextStyle(fontSize: 18)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMapArea() {
+    // Default center (Mexico City) when no GPS points yet
+    final center = _currentPosition ?? const LatLng(19.4326, -99.1332);
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Container(
         height: 280,
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFFDCFCE7),
-              Color(0xFFECFDF5),
-              Color(0xFFDBEAFE),
-            ],
-          ),
           borderRadius: BorderRadius.circular(22),
           boxShadow: [
             BoxShadow(
@@ -144,76 +311,56 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
             ),
           ],
         ),
+        clipBehavior: Clip.antiAlias,
         child: Stack(
           children: [
-            // Grid pattern
-            CustomPaint(
-              size: const Size(double.infinity, 280),
-              painter: _GridPainter(),
-            ),
-            // Streets
-            Positioned(
-              top: 280 * 0.3,
-              left: 0,
-              right: 0,
-              child: Container(height: 4, color: Colors.white60),
-            ),
-            Positioned(
-              top: 280 * 0.6,
-              left: 0,
-              right: 0,
-              child: Container(height: 6, color: Colors.white70),
-            ),
-            // Park area
-            Positioned(
-              bottom: 0,
-              right: 0,
-              child: Container(
-                width: 128,
-                height: 128,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF86EFAC).withValues(alpha: 0.4),
-                  borderRadius:
-                      const BorderRadius.only(topLeft: Radius.circular(60)),
-                ),
+            GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: center,
+                zoom: 16,
               ),
-            ),
-            Positioned(
-              bottom: 8,
-              right: 8,
-              child: Text(
-                'Central Park',
-                style: GoogleFonts.nunito(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.green600.withValues(alpha: 0.5),
-                ),
-              ),
-            ),
-            // Route path
-            CustomPaint(
-              size: const Size(double.infinity, 280),
-              painter: _RoutePainter(),
-            ),
-            // Start Point
-            Positioned(
-              bottom: 30,
-              left: 30,
-              child: _PulsingDot(color: AppColors.green500, size: 12),
-            ),
-            // Current Location
-            Positioned(
-              top: 90,
-              right: 150,
-              child: _WalkerLocation(),
+              onMapCreated: (controller) {
+                _mapController = controller;
+                if (_currentPosition != null) {
+                  _animateToCurrentPosition();
+                }
+              },
+              polylines: {
+                if (_routePoints.length >= 2)
+                  Polyline(
+                    polylineId: const PolylineId('walk_route'),
+                    points: _routePoints,
+                    color: AppColors.blue500, // Sky Blue #3B82F6
+                    width: 5,
+                  ),
+              },
+              markers: {
+                if (_currentPosition != null)
+                  Marker(
+                    markerId: const MarkerId('walker'),
+                    position: _currentPosition!,
+                    infoWindow: InfoWindow(title: _walkerName ?? 'Walker'),
+                  ),
+                if (_routePoints.isNotEmpty)
+                  Marker(
+                    markerId: const MarkerId('start'),
+                    position: _routePoints.first,
+                    infoWindow: const InfoWindow(title: 'Start'),
+                    icon: BitmapDescriptor.defaultMarkerWithHue(
+                      BitmapDescriptor.hueGreen,
+                    ),
+                  ),
+              },
+              myLocationEnabled: false,
+              zoomControlsEnabled: false,
+              mapToolbarEnabled: false,
             ),
             // LIVE Badge
             Positioned(
               top: 12,
               left: 12,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.95),
                   borderRadius: BorderRadius.circular(12),
@@ -230,43 +377,79 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
                     Container(
                       width: 8,
                       height: 8,
-                      decoration: const BoxDecoration(
-                        color: AppColors.red500,
+                      decoration: BoxDecoration(
+                        color: _gpsSignalLost ? AppColors.amber500 : AppColors.red500,
                         shape: BoxShape.circle,
                       ),
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'LIVE',
+                      _gpsSignalLost ? 'SIGNAL LOST' : 'LIVE',
                       style: GoogleFonts.nunito(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
+                        color: _gpsSignalLost
+                            ? AppColors.amber500
+                            : AppColors.textPrimary,
                       ),
                     ),
                   ],
                 ),
               ),
             ),
-            // Recenter
+            // GPS Signal Lost Banner
+            if (_gpsSignalLost)
+              Positioned(
+                bottom: 50,
+                left: 12,
+                right: 12,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.amber50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.amber500),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.signal_wifi_off, size: 16, color: AppColors.amber500),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'GPS signal lost. Last position shown.',
+                          style: GoogleFonts.nunito(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.amber500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            // Recenter button
             Positioned(
               bottom: 12,
               right: 12,
-              child: Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 8,
-                    ),
-                  ],
+              child: GestureDetector(
+                onTap: _animateToCurrentPosition,
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.my_location,
+                      size: 16, color: AppColors.orange500),
                 ),
-                child: const Icon(Icons.location_on,
-                    size: 16, color: AppColors.orange500),
               ),
             ),
           ],
@@ -312,7 +495,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Sarah Johnson',
+                    _walkerName ?? 'Walker',
                     style: GoogleFonts.nunito(
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
@@ -320,7 +503,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
                     ),
                   ),
                   Text(
-                    'Walking Max',
+                    'Walking ${_dogName ?? 'your dog'}',
                     style: GoogleFonts.nunito(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -337,12 +520,14 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
                 color: AppColors.green50,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child:
-                  const Icon(Icons.phone, size: 18, color: AppColors.green600),
+              child: const Icon(Icons.phone, size: 18, color: AppColors.green600),
             ),
             const SizedBox(width: 8),
             GestureDetector(
-              onTap: () => Navigator.pushNamed(context, '/chat'),
+              onTap: () => Navigator.pushNamed(context, '/chat',
+                  arguments: _bookingId != null
+                      ? {'booking_id': _bookingId}
+                      : null),
               child: Container(
                 width: 40,
                 height: 40,
@@ -361,6 +546,11 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
   }
 
   Widget _buildStatsGrid() {
+    final distanceKm = _calculateDistanceKm();
+    final distanceStr = distanceKm < 1
+        ? '${(distanceKm * 1000).toInt()}m'
+        : '${distanceKm.toStringAsFixed(1)}km';
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Row(
@@ -369,7 +559,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
             icon: Icons.access_time,
             iconColor: AppColors.blue500,
             bgGradient: const [AppColors.blue50, Color(0x80DBEAFE)],
-            value: '$_elapsedTime',
+            value: '$_elapsedMinutes',
             label: 'minutes',
           ),
           const SizedBox(width: 12),
@@ -377,16 +567,16 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
             icon: Icons.trending_up,
             iconColor: AppColors.orange500,
             bgGradient: const [AppColors.orange50, Color(0x80FFEDD5)],
-            value: '$_distance',
-            label: 'miles',
+            value: distanceStr,
+            label: 'distance',
           ),
           const SizedBox(width: 12),
           _WalkStat(
-            icon: Icons.camera_alt,
+            icon: Icons.location_on,
             iconColor: AppColors.purple500,
             bgGradient: const [AppColors.purple50, Color(0x80F3E8FF)],
-            value: '5',
-            label: 'photos',
+            value: '${_routePoints.length}',
+            label: 'points',
           ),
         ],
       ),
@@ -460,13 +650,47 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
   }
 
   Widget _buildUpdatesTab() {
-    final updates = [
-      {'color': AppColors.orange500, 'text': 'Max found a new friend at the park! \u{1F415}', 'time': '2 minutes ago'},
-      {'color': AppColors.purple500, 'text': 'Photo update: Playing fetch! \u{1F4F8}', 'time': '5 minutes ago'},
-      {'color': AppColors.blue500, 'text': 'Water break at Central Park \u{1F4A7}', 'time': '8 minutes ago'},
-      {'color': AppColors.amber500, 'text': 'Bathroom break - Poop \u{1F4A9}', 'time': '12 minutes ago'},
-      {'color': AppColors.green500, 'text': 'Walk started - Max is excited! \u{1F389}', 'time': '$_elapsedTime minutes ago'},
-    ];
+    if (_liveUpdates.isEmpty) {
+      // Show default status based on walk state
+      final updates = <Map<String, dynamic>>[];
+      if (_gpsSignalLost) {
+        updates.add({
+          'color': AppColors.amber500,
+          'text': 'GPS signal lost - waiting for reconnection',
+          'time': 'now',
+        });
+      }
+      if (_routePoints.isNotEmpty) {
+        updates.add({
+          'color': AppColors.green500,
+          'text': 'Walk is in progress - tracking ${_routePoints.length} GPS points',
+          'time': '$_elapsedMinutes minutes ago',
+        });
+      }
+      if (updates.isEmpty) {
+        updates.add({
+          'color': AppColors.blue500,
+          'text': 'Waiting for walk to begin...',
+          'time': 'now',
+        });
+      }
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Live Updates',
+            style: GoogleFonts.nunito(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...updates.map((u) => _buildUpdateItem(u)),
+        ],
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -480,64 +704,62 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        ...updates.map((u) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 4,
-                    height: 4,
-                    margin: const EdgeInsets.only(top: 8),
-                    decoration: BoxDecoration(
-                      color: u['color'] as Color,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          u['text'] as String,
-                          style: GoogleFonts.nunito(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          u['time'] as String,
-                          style: GoogleFonts.nunito(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textTertiary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            )),
+        ..._liveUpdates.map((u) => _buildUpdateItem(u)),
       ],
     );
   }
 
-  Widget _buildPhotosTab() {
-    final photos = [
-      {'emoji': '\u{1F3BE}', 'caption': 'Max is loving fetch time! \u{1F415}', 'time': '5 minutes ago', 'colors': [const Color(0xFFA7F3D0), const Color(0xFF6EE7B7)]},
-      {'emoji': '\u{1F4A7}', 'caption': 'Hydration break! Good boy Max \u{1F4A6}', 'time': '10 minutes ago', 'colors': [const Color(0xFFBFDBFE), const Color(0xFF93C5FD)]},
-      {'emoji': '\u{1F333}', 'caption': 'Beautiful day at the park! \u{1F31E}', 'time': '15 minutes ago', 'colors': [const Color(0xFFFDE68A), const Color(0xFFFBBF24)]},
-    ];
+  Widget _buildUpdateItem(Map<String, dynamic> u) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 4,
+            height: 4,
+            margin: const EdgeInsets.only(top: 8),
+            decoration: BoxDecoration(
+              color: u['color'] as Color,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  u['text'] as String,
+                  style: GoogleFonts.nunito(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  u['time'] as String,
+                  style: GoogleFonts.nunito(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
+  Widget _buildPhotosTab() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Live Photo Feed',
+          'Walk Photos',
           style: GoogleFonts.nunito(
             fontSize: 16,
             fontWeight: FontWeight.w800,
@@ -545,88 +767,17 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        ...photos.map((p) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: (p['colors'] as List<Color>)[0].withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [AppColors.orange400, AppColors.orange500],
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Center(
-                            child: Text('\u{1F469}',
-                                style: TextStyle(fontSize: 18)),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Sarah Johnson',
-                                style: GoogleFonts.nunito(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.textPrimary,
-                                ),
-                              ),
-                              Text(
-                                p['time'] as String,
-                                style: GoogleFonts.nunito(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    AspectRatio(
-                      aspectRatio: 4 / 3,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: p['colors'] as List<Color>,
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Center(
-                          child: Text(p['emoji'] as String,
-                              style: const TextStyle(fontSize: 48)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      p['caption'] as String,
-                      style: GoogleFonts.nunito(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )),
+        Center(
+          child: Text(
+            'Photos shared during the walk will appear here.',
+            style: GoogleFonts.nunito(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
       ],
     );
   }
@@ -644,118 +795,16 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        // Summary
-        Row(
-          children: [
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      const Color(0xFFFEF9C3),
-                      const Color(0xFFFEF08A).withValues(alpha: 0.5),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(
-                  children: [
-                    const Text('\u{1F4A7}', style: TextStyle(fontSize: 30)),
-                    const SizedBox(height: 4),
-                    Text(
-                      '2',
-                      style: GoogleFonts.nunito(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    Text(
-                      'Pee breaks',
-                      style: GoogleFonts.nunito(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+        Center(
+          child: Text(
+            'Bathroom updates will appear here during the walk.',
+            style: GoogleFonts.nunito(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary,
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      AppColors.amber50,
-                      const Color(0xFFFDE68A).withValues(alpha: 0.5),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(
-                  children: [
-                    const Text('\u{1F4A9}', style: TextStyle(fontSize: 30)),
-                    const SizedBox(height: 4),
-                    Text(
-                      '1',
-                      style: GoogleFonts.nunito(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    Text(
-                      'Poop breaks',
-                      style: GoogleFonts.nunito(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        // Activity Timeline
-        _ActivityItem(
-          emoji: '\u{1F4A7}',
-          bgColor: AppColors.yellow400,
-          title: 'Pee Break',
-          badge: 'Normal',
-          badgeColor: AppColors.yellow200,
-          badgeTextColor: AppColors.yellow800,
-          time: '6 minutes ago',
-          location: 'Location: Near the fountain',
-        ),
-        const SizedBox(height: 12),
-        _ActivityItem(
-          emoji: '\u{1F4A9}',
-          bgColor: AppColors.amber500,
-          title: 'Poop Break',
-          badge: 'Healthy',
-          badgeColor: AppColors.green200,
-          badgeTextColor: AppColors.green800,
-          time: '12 minutes ago',
-          location: 'Location: Grassy area',
-          note: 'Note: Solid & well-formed \u{2713}',
-        ),
-        const SizedBox(height: 12),
-        _ActivityItem(
-          emoji: '\u{1F4A7}',
-          bgColor: AppColors.yellow400,
-          title: 'Pee Break',
-          badge: 'Normal',
-          badgeColor: AppColors.yellow200,
-          badgeTextColor: AppColors.yellow800,
-          time: '16 minutes ago',
-          location: 'Location: Park entrance',
+            textAlign: TextAlign.center,
+          ),
         ),
       ],
     );
@@ -870,288 +919,4 @@ class _TabButton extends StatelessWidget {
       ),
     );
   }
-}
-
-class _ActivityItem extends StatelessWidget {
-  final String emoji;
-  final Color bgColor;
-  final String title;
-  final String badge;
-  final Color badgeColor;
-  final Color badgeTextColor;
-  final String time;
-  final String location;
-  final String? note;
-
-  const _ActivityItem({
-    required this.emoji,
-    required this.bgColor,
-    required this.title,
-    required this.badge,
-    required this.badgeColor,
-    required this.badgeTextColor,
-    required this.time,
-    required this.location,
-    this.note,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: badgeColor.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Center(
-              child: Text(emoji, style: const TextStyle(fontSize: 20)),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      title,
-                      style: GoogleFonts.nunito(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: badgeColor,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        badge,
-                        style: GoogleFonts.nunito(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: badgeTextColor,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(Icons.access_time,
-                        size: 12, color: AppColors.textSecondary),
-                    const SizedBox(width: 4),
-                    Text(
-                      time,
-                      style: GoogleFonts.nunito(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  location,
-                  style: GoogleFonts.nunito(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF666666),
-                  ),
-                ),
-                if (note != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    note!,
-                    style: GoogleFonts.nunito(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFF666666),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PulsingDot extends StatefulWidget {
-  final Color color;
-  final double size;
-
-  const _PulsingDot({required this.color, required this.size});
-
-  @override
-  State<_PulsingDot> createState() => _PulsingDotState();
-}
-
-class _PulsingDotState extends State<_PulsingDot>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(seconds: 2),
-      vsync: this,
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        AnimatedBuilder(
-          animation: _controller,
-          builder: (context, child) {
-            return Container(
-              width: widget.size * 2,
-              height: widget.size * 2,
-              decoration: BoxDecoration(
-                color: widget.color.withValues(alpha: 0.2 * (1 - _controller.value)),
-                shape: BoxShape.circle,
-              ),
-            );
-          },
-        ),
-        Container(
-          width: widget.size,
-          height: widget.size,
-          decoration: BoxDecoration(
-            color: widget.color,
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 2),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _WalkerLocation extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [AppColors.orange500, AppColors.orange400],
-            ),
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 3),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
-                blurRadius: 8,
-              ),
-            ],
-          ),
-          child: const Center(
-            child: Text('\u{1F469}', style: TextStyle(fontSize: 18)),
-          ),
-        ),
-        Positioned(
-          top: -4,
-          right: -4,
-          child: Container(
-            width: 20,
-            height: 20,
-            decoration: BoxDecoration(
-              color: AppColors.blue500,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
-            ),
-            child: const Icon(Icons.navigation,
-                size: 10, color: Colors.white),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _GridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFF94A3B8).withValues(alpha: 0.2)
-      ..strokeWidth = 0.5;
-
-    for (double x = 0; x < size.width; x += 40) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (double y = 0; y < size.height; y += 40) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _RoutePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppColors.orange500.withValues(alpha: 0.8)
-      ..strokeWidth = 4
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    final path = Path()
-      ..moveTo(30, size.height - 40)
-      ..quadraticBezierTo(60, size.height - 60, 80, size.height - 90)
-      ..quadraticBezierTo(100, size.height - 120, 120, size.height - 130)
-      ..quadraticBezierTo(160, size.height - 150, 180, size.height - 160)
-      ..quadraticBezierTo(200, size.height - 180, 220, size.height - 190);
-
-    const dashWidth = 8.0;
-    const dashSpace = 4.0;
-    final pathMetrics = path.computeMetrics();
-    for (final metric in pathMetrics) {
-      double distance = 0;
-      while (distance < metric.length) {
-        final end = (distance + dashWidth).clamp(0.0, metric.length);
-        final extractPath = metric.extractPath(distance, end);
-        canvas.drawPath(extractPath, paint);
-        distance += dashWidth + dashSpace;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
