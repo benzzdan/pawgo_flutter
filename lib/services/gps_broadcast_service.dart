@@ -1,0 +1,166 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+/// Service that broadcasts the walker's GPS coordinates to Supabase
+/// every 5 seconds during an active walk.
+class GpsBroadcastService {
+  GpsBroadcastService._();
+  static final GpsBroadcastService instance = GpsBroadcastService._();
+
+  Timer? _broadcastTimer;
+  String? _activeBookingId;
+  bool _isBroadcasting = false;
+  Position? _lastPosition;
+
+  /// Whether GPS broadcasting is currently active.
+  bool get isBroadcasting => _isBroadcasting;
+
+  /// The booking ID currently being tracked.
+  String? get activeBookingId => _activeBookingId;
+
+  /// Last known position.
+  Position? get lastPosition => _lastPosition;
+
+  /// Callback for position updates (UI can listen to this).
+  ValueNotifier<Position?> positionNotifier = ValueNotifier(null);
+
+  /// Start broadcasting GPS for a given booking.
+  /// Returns true if started successfully, false otherwise.
+  Future<bool> startBroadcasting(String bookingId) async {
+    if (_isBroadcasting && _activeBookingId == bookingId) return true;
+
+    // Stop any existing broadcast
+    stopBroadcasting();
+
+    // Check and request permissions
+    final hasPermission = await _ensureLocationPermission();
+    if (!hasPermission) return false;
+
+    _activeBookingId = bookingId;
+    _isBroadcasting = true;
+
+    // Send initial position immediately
+    await _captureAndSendPosition();
+
+    // Set up periodic broadcast every 5 seconds
+    _broadcastTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _captureAndSendPosition(),
+    );
+
+    debugPrint('GPS broadcast started for booking: $bookingId');
+    return true;
+  }
+
+  /// Stop broadcasting GPS.
+  void stopBroadcasting() {
+    _broadcastTimer?.cancel();
+    _broadcastTimer = null;
+    _isBroadcasting = false;
+    _activeBookingId = null;
+    debugPrint('GPS broadcast stopped');
+  }
+
+  /// Resume broadcasting for an active walk after app restart.
+  /// Checks if there's an active walk for the current walker and resumes.
+  Future<bool> resumeIfActiveWalk() async {
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) return false;
+
+      // Find walker profile
+      final walkerData = await Supabase.instance.client
+          .from('walkers')
+          .select('id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      if (walkerData == null) return false;
+      final walkerId = walkerData['id'] as String;
+
+      // Find active booking (walk_started status)
+      final booking = await Supabase.instance.client
+          .from('bookings')
+          .select('id')
+          .eq('walker_id', walkerId)
+          .eq('status', 'walk_started')
+          .maybeSingle();
+
+      if (booking == null) return false;
+
+      final bookingId = booking['id'] as String;
+      debugPrint('Resuming GPS broadcast for booking: $bookingId');
+
+      // Load last known position from DB
+      final lastLoc = await Supabase.instance.client
+          .from('walk_locations')
+          .select('lat, lng, accuracy_m, recorded_at')
+          .eq('booking_id', bookingId)
+          .order('recorded_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      if (lastLoc != null) {
+        debugPrint(
+            'Resuming from last known position: ${lastLoc['lat']}, ${lastLoc['lng']}');
+      }
+
+      return await startBroadcasting(bookingId);
+    } catch (e) {
+      debugPrint('Error resuming GPS broadcast: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _ensureLocationPermission() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      debugPrint('Location services are disabled');
+      return false;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        debugPrint('Location permission denied');
+        return false;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      debugPrint('Location permission permanently denied');
+      return false;
+    }
+
+    return true;
+  }
+
+  Future<void> _captureAndSendPosition() async {
+    if (!_isBroadcasting || _activeBookingId == null) return;
+
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 0,
+        ),
+      );
+
+      _lastPosition = position;
+      positionNotifier.value = position;
+
+      await Supabase.instance.client.from('walk_locations').insert({
+        'booking_id': _activeBookingId,
+        'lat': position.latitude,
+        'lng': position.longitude,
+        'accuracy_m': position.accuracy,
+        'recorded_at': DateTime.now().toUtc().toIso8601String(),
+      });
+    } catch (e) {
+      debugPrint('Error capturing/sending GPS position: $e');
+    }
+  }
+}

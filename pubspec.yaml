@@ -15,6 +15,7 @@ dependencies:
   supabase_flutter: ^2.12.0
   purchases_flutter: ^8.6.0
   google_maps_flutter: ^2.12.0
+  geolocator: ^13.0.2
 
 dev_dependencies:
   flutter_test:

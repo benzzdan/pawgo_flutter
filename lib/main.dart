@@ -12,6 +12,7 @@ import 'package:pawgo/screens/walker_chat_screen.dart';
 import 'package:pawgo/screens/profile_screen.dart';
 import 'package:pawgo/screens/booking_screen.dart';
 import 'package:pawgo/screens/payment_screen.dart';
+import 'package:pawgo/services/gps_broadcast_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,6 +39,11 @@ class PawgoApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final session = Supabase.instance.client.auth.currentSession;
     final initialRoute = session != null ? '/home' : '/';
+
+    // Resume GPS broadcast if walker has an active walk on app restart
+    if (session != null) {
+      GpsBroadcastService.instance.resumeIfActiveWalk();
+    }
 
     return MaterialApp(
       title: 'Pawgo',
@@ -80,7 +86,10 @@ class _AuthGateState extends State<_AuthGate> {
       if (event == AuthChangeEvent.signedIn ||
           event == AuthChangeEvent.tokenRefreshed) {
         Navigator.pushReplacementNamed(context, '/home');
+        // Resume GPS broadcast if walker has an active walk
+        GpsBroadcastService.instance.resumeIfActiveWalk();
       } else if (event == AuthChangeEvent.signedOut) {
+        GpsBroadcastService.instance.stopBroadcasting();
         Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
       }
     });

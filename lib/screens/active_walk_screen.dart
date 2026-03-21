@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:pawgo/services/gps_broadcast_service.dart';
 
 class ActiveWalkScreen extends StatefulWidget {
   const ActiveWalkScreen({super.key});
@@ -34,6 +35,10 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
   bool _gpsSignalLost = false;
   Timer? _gpsTimeoutTimer;
   static const _gpsTimeoutDuration = Duration(seconds: 30);
+
+  // Walker GPS broadcast
+  bool _isWalker = false;
+  final GpsBroadcastService _gpsBroadcast = GpsBroadcastService.instance;
 
   // Tab state
   String _activeTab = 'updates';
@@ -73,6 +78,10 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
     _gpsTimeoutTimer?.cancel();
     _locationChannel?.unsubscribe();
     _mapController?.dispose();
+    // Note: GPS broadcast is NOT stopped here intentionally.
+    // The service is a singleton that continues in the background
+    // so GPS keeps broadcasting even if the user navigates away.
+    // It is stopped when the walk ends (via end-walk Edge Function).
     super.dispose();
   }
 
@@ -85,9 +94,16 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
           .eq('id', _bookingId!)
           .single();
       if (!mounted) return;
+
+      // Check if current user is the walker for this booking
+      final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+      final walkerUserId = data['walkers']?['user_id'] as String?;
+      final isWalker = currentUserId != null && currentUserId == walkerUserId;
+
       setState(() {
         _walkerName ??= data['walkers']?['users']?['full_name'] as String? ?? 'Walker';
         _dogName ??= data['dogs']?['name'] as String? ?? 'Your dog';
+        _isWalker = isWalker;
         // Calculate elapsed time from started_at
         final startedAt = data['started_at'] as String?;
         if (startedAt != null) {
@@ -96,8 +112,26 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
           _startElapsedTimer();
         }
       });
+
+      // If the current user is the walker and walk is active, start GPS broadcast
+      final status = data['status'] as String?;
+      if (isWalker && status == 'walk_started') {
+        _startGpsBroadcast();
+      }
     } catch (e) {
       debugPrint('Error loading booking: $e');
+    }
+  }
+
+  Future<void> _startGpsBroadcast() async {
+    if (_bookingId == null) return;
+    final started = await _gpsBroadcast.startBroadcasting(_bookingId!);
+    if (!started && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not access GPS. Please enable location services.'),
+        ),
+      );
     }
   }
 
@@ -351,7 +385,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
                     ),
                   ),
               },
-              myLocationEnabled: false,
+              myLocationEnabled: _isWalker,
               zoomControlsEnabled: false,
               mapToolbarEnabled: false,
             ),
