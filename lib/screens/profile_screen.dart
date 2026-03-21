@@ -337,6 +337,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildSettingsSection() {
     final items = [
       {
+        'icon': Icons.directions_walk,
+        'color': AppColors.green600,
+        'bgColor': AppColors.green50,
+        'label': 'Walker Sessions',
+        'route': '/walker-bookings',
+      },
+      {
         'icon': Icons.notifications,
         'color': AppColors.blue600,
         'bgColor': AppColors.blue50,
@@ -377,46 +384,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: items.asMap().entries.map((entry) {
           final index = entry.key;
           final item = entry.value;
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            decoration: BoxDecoration(
-              border: index < items.length - 1
-                  ? const Border(
-                      bottom: BorderSide(color: AppColors.surface),
-                    )
-                  : null,
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: item['bgColor'] as Color,
-                    borderRadius: BorderRadius.circular(12),
+          final route = item['route'] as String?;
+          return GestureDetector(
+            onTap: route != null ? () => Navigator.pushNamed(context, route) : null,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              decoration: BoxDecoration(
+                border: index < items.length - 1
+                    ? const Border(
+                        bottom: BorderSide(color: AppColors.surface),
+                      )
+                    : null,
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: item['bgColor'] as Color,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(item['icon'] as IconData,
+                        size: 18, color: item['color'] as Color),
                   ),
-                  child: Icon(item['icon'] as IconData,
-                      size: 18, color: item['color'] as Color),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    item['label'] as String,
-                    style: GoogleFonts.nunito(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      item['label'] as String,
+                      style: GoogleFonts.nunito(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                   ),
-                ),
-                Text(
-                  '\u{203A}',
-                  style: GoogleFonts.nunito(
-                    fontSize: 20,
-                    color: AppColors.textTertiary,
+                  Text(
+                    '\u{203A}',
+                    style: GoogleFonts.nunito(
+                      fontSize: 20,
+                      color: AppColors.textTertiary,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           );
         }).toList(),
