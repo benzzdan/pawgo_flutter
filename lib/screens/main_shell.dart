@@ -16,11 +16,11 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
 
-  final _screens = const [
-    HomeScreen(),
-    FindScreen(),
-    BookingsScreen(),
-    MyDogsScreen(),
+  final _screens = [
+    const HomeScreen(),
+    const FindScreen(),
+    const BookingsScreen(),
+    const MyDogsScreen(),
   ];
 
   @override
