@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/models/mock_data.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -425,8 +426,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildLogout() {
     return GestureDetector(
-      onTap: () => Navigator.pushNamedAndRemoveUntil(
-          context, '/', (route) => false),
+      onTap: () {
+        Supabase.instance.client.auth.signOut();
+        Navigator.pushNamedAndRemoveUntil(
+            context, '/', (route) => false);
+      },
       child: Container(
         decoration: BoxDecoration(
           color: AppColors.white,
