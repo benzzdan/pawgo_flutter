@@ -1,10 +1,104 @@
 import 'package:flutter/material.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/models/mock_data.dart';
+import 'package:pawgo/widgets/celebration_overlay.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-class MyDogsScreen extends StatelessWidget {
+class MyDogsScreen extends StatefulWidget {
   const MyDogsScreen({super.key});
+
+  @override
+  State<MyDogsScreen> createState() => _MyDogsScreenState();
+}
+
+class _MyDogsScreenState extends State<MyDogsScreen> {
+  final List<Dog> _dogs = List.from(MockData.dogs);
+
+  Future<void> _addDog() async {
+    final dog = await showDialog<Dog>(
+      context: context,
+      builder: (context) => const _AddDogDialog(),
+    );
+
+    if (dog == null || !mounted) return;
+
+    setState(() {
+      _dogs.add(dog);
+    });
+
+    // Check if this is the user's first dog (count == 1).
+    if (_dogs.length == 1) {
+      await _showFirstDogCelebration(dog.name);
+    }
+  }
+
+  Future<void> _showFirstDogCelebration(String dogName) async {
+    final prefs = await SharedPreferences.getInstance();
+    // Use a generic key (no userId in mock mode).
+    const key = 'first_dog_celebration_seen';
+
+    if (prefs.getBool(key) == true) return;
+
+    await prefs.setBool(key, true);
+
+    if (!mounted) return;
+
+    CelebrationOverlay.show(
+      context,
+      title: 'Welcome to the Pack!',
+      subtitle: '$dogName is ready for adventures',
+      illustrationAsset: 'lib/assets/illustrations/dog_happy.svg',
+      confettiColors: const [
+        Color(0xFFF4A832), // Golden Paw
+        Color(0xFFC07D4D), // Warm Caramel
+        Color(0xFFFFF5E6), // Soft Cream
+      ],
+    );
+  }
+
+  void _deleteDog(Dog dog) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Remove ${dog.name}?',
+          style: GoogleFonts.nunito(fontWeight: FontWeight.w800),
+        ),
+        content: Text(
+          'This will remove ${dog.name} from your dogs list.',
+          style: GoogleFonts.nunito(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.nunito(
+                fontWeight: FontWeight.w700,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              setState(() {
+                _dogs.remove(dog);
+              });
+            },
+            child: Text(
+              'Remove',
+              style: GoogleFonts.nunito(
+                fontWeight: FontWeight.w700,
+                color: AppColors.red500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,14 +134,17 @@ class MyDogsScreen extends StatelessWidget {
             ),
           ),
           // Dogs List
-          ...MockData.dogs.map((dog) => Padding(
+          ..._dogs.map((dog) => Padding(
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-                child: _DogCard(dog: dog),
+                child: _DogCard(
+                  dog: dog,
+                  onDelete: () => _deleteDog(dog),
+                ),
               )),
           // Add Dog Card
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-            child: _AddDogCard(),
+            child: _AddDogCard(onTap: _addDog),
           ),
         ],
       ),
@@ -57,8 +154,9 @@ class MyDogsScreen extends StatelessWidget {
 
 class _DogCard extends StatelessWidget {
   final Dog dog;
+  final VoidCallback? onDelete;
 
-  const _DogCard({required this.dog});
+  const _DogCard({required this.dog, this.onDelete});
 
   @override
   Widget build(BuildContext context) {
@@ -133,20 +231,25 @@ class _DogCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Container(
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: AppColors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.border, width: 2),
-                  ),
-                  child: Center(
-                    child: Text(
-                      'Edit',
-                      style: GoogleFonts.nunito(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textSecondary,
+                child: GestureDetector(
+                  onTap: () {
+                    // Edit action
+                  },
+                  child: Container(
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.border, width: 2),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'Edit',
+                        style: GoogleFonts.nunito(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textSecondary,
+                        ),
                       ),
                     ),
                   ),
@@ -154,19 +257,22 @@ class _DogCard extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Container(
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: AppColors.orange50,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Center(
-                    child: Text(
-                      'View Profile',
-                      style: GoogleFonts.nunito(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.orange500,
+                child: GestureDetector(
+                  onTap: onDelete,
+                  child: Container(
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.red50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'Delete',
+                        style: GoogleFonts.nunito(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.red500,
+                        ),
                       ),
                     ),
                   ),
@@ -214,12 +320,14 @@ class _InfoColumn extends StatelessWidget {
 }
 
 class _AddDogCard extends StatelessWidget {
+  final VoidCallback? onTap;
+
+  const _AddDogCard({this.onTap});
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () {
-        // Add dog action
-      },
+      onTap: onTap,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 20),
@@ -259,6 +367,141 @@ class _AddDogCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Simple dialog for adding a new dog.
+class _AddDogDialog extends StatefulWidget {
+  const _AddDogDialog();
+
+  @override
+  State<_AddDogDialog> createState() => _AddDogDialogState();
+}
+
+class _AddDogDialogState extends State<_AddDogDialog> {
+  final _nameController = TextEditingController();
+  final _breedController = TextEditingController();
+  final _ageController = TextEditingController();
+  final _weightController = TextEditingController();
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _breedController.dispose();
+    _ageController.dispose();
+    _weightController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    if (_nameController.text.trim().isEmpty) return;
+
+    final dog = Dog(
+      id: DateTime.now().millisecondsSinceEpoch,
+      name: _nameController.text.trim(),
+      breed: _breedController.text.trim().isEmpty
+          ? 'Mixed Breed'
+          : _breedController.text.trim(),
+      age: _ageController.text.trim().isEmpty
+          ? '1 yr'
+          : _ageController.text.trim(),
+      weight: _weightController.text.trim().isEmpty
+          ? '20 lbs'
+          : _weightController.text.trim(),
+      image: '🐕',
+    );
+
+    Navigator.pop(context, dog);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(
+        'Add a Dog',
+        style: GoogleFonts.nunito(
+          fontWeight: FontWeight.w800,
+          fontSize: 20,
+        ),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildField(_nameController, 'Name *', 'e.g. Buddy'),
+            const SizedBox(height: 12),
+            _buildField(_breedController, 'Breed', 'e.g. Golden Retriever'),
+            const SizedBox(height: 12),
+            _buildField(_ageController, 'Age', 'e.g. 3 yrs'),
+            const SizedBox(height: 12),
+            _buildField(_weightController, 'Weight', 'e.g. 65 lbs'),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(
+            'Cancel',
+            style: GoogleFonts.nunito(
+              fontWeight: FontWeight.w700,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ),
+        FilledButton(
+          onPressed: _save,
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.orange500,
+          ),
+          child: Text(
+            'Save',
+            style: GoogleFonts.nunito(
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildField(
+    TextEditingController controller,
+    String label,
+    String hint,
+  ) {
+    return TextField(
+      controller: controller,
+      style: GoogleFonts.nunito(fontSize: 15),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        labelStyle: GoogleFonts.nunito(
+          fontWeight: FontWeight.w600,
+          color: AppColors.textSecondary,
+        ),
+        hintStyle: GoogleFonts.nunito(
+          color: AppColors.textTertiary,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.orange500, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 12,
         ),
       ),
     );

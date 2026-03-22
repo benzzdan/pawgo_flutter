@@ -15,6 +15,7 @@ dependencies:
   flutter_svg: ^2.0.17
   confetti: ^0.8.0
   flutter_animate: ^4.5.2
+  shared_preferences: ^2.3.4
 
 dev_dependencies:
   flutter_test:
