@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <!-- Sitting dog - warm, minimalistic, hand-drawn style -->
+  <!-- Body -->
+  <ellipse cx="100" cy="130" rx="38" ry="45" fill="#C07D4D" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Head -->
+  <circle cx="100" cy="78" r="30" fill="#C07D4D" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round"/>
+  <!-- Left ear (floppy) -->
+  <path d="M75 68 Q60 50 58 72 Q57 82 72 80" fill="#C07D4D" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Right ear (floppy) -->
+  <path d="M125 68 Q140 50 142 72 Q143 82 128 80" fill="#C07D4D" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Inner ear shading -->
+  <path d="M68 70 Q62 60 63 74" fill="none" stroke="#F4A832" stroke-width="2" stroke-linecap="round"/>
+  <path d="M132 70 Q138 60 137 74" fill="none" stroke="#F4A832" stroke-width="2" stroke-linecap="round"/>
+  <!-- Snout -->
+  <ellipse cx="100" cy="90" rx="14" ry="10" fill="#FFF5E6" stroke="#4A2C2A" stroke-width="2" stroke-linecap="round"/>
+  <!-- Nose -->
+  <ellipse cx="100" cy="86" rx="5" ry="3.5" fill="#4A2C2A"/>
+  <!-- Eyes (dot style) -->
+  <circle cx="88" cy="74" r="3" fill="#4A2C2A"/>
+  <circle cx="112" cy="74" r="3" fill="#4A2C2A"/>
+  <!-- Eye sparkle -->
+  <circle cx="89.5" cy="73" r="1" fill="white"/>
+  <circle cx="113.5" cy="73" r="1" fill="white"/>
+  <!-- Mouth -->
+  <path d="M95 93 Q100 97 105 93" fill="none" stroke="#4A2C2A" stroke-width="2" stroke-linecap="round"/>
+  <!-- Front legs -->
+  <path d="M82 160 L80 180 Q80 185 85 185 L88 185" fill="none" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M118 160 L120 180 Q120 185 115 185 L112 185" fill="none" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Front leg fill -->
+  <path d="M80 155 Q78 170 80 180 Q80 185 85 185 L88 185 Q90 185 90 182 L90 155" fill="#C07D4D" stroke="none"/>
+  <path d="M110 155 Q112 170 120 180 Q120 185 115 185 L112 185 Q110 185 110 182 L110 155" fill="#C07D4D" stroke="none"/>
+  <!-- Paws -->
+  <ellipse cx="85" cy="186" rx="6" ry="3" fill="#F4A832" stroke="#4A2C2A" stroke-width="2"/>
+  <ellipse cx="115" cy="186" rx="6" ry="3" fill="#F4A832" stroke="#4A2C2A" stroke-width="2"/>
+  <!-- Tail -->
+  <path d="M62 125 Q45 110 50 95" fill="none" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round"/>
+  <path d="M62 125 Q46 112 51 97" fill="none" stroke="#C07D4D" stroke-width="2" stroke-linecap="round"/>
+  <!-- Collar -->
+  <path d="M76 100 Q100 108 124 100" fill="none" stroke="#F4A832" stroke-width="4" stroke-linecap="round"/>
+  <!-- Collar tag -->
+  <circle cx="100" cy="108" r="4" fill="#F4A832" stroke="#4A2C2A" stroke-width="1.5"/>
+  <!-- Sparkle lines (happiness) -->
+  <path d="M145 60 L150 55" stroke="#F4A832" stroke-width="2" stroke-linecap="round"/>
+  <path d="M150 68 L157 66" stroke="#F4A832" stroke-width="2" stroke-linecap="round"/>
+  <path d="M147 76 L153 78" stroke="#F4A832" stroke-width="2" stroke-linecap="round"/>
+</svg>

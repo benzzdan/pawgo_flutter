@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <!-- Walking dog - gentle stride, for loading states -->
+  <!-- Body -->
+  <ellipse cx="95" cy="110" rx="42" ry="28" fill="#C07D4D" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Head -->
+  <circle cx="140" cy="80" r="26" fill="#C07D4D" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round"/>
+  <!-- Neck -->
+  <path d="M120 100 Q130 90 135 95" fill="#C07D4D" stroke="none"/>
+  <path d="M118 95 Q128 88 132 92" fill="none" stroke="#4A2C2A" stroke-width="2" stroke-linecap="round"/>
+  <!-- Left ear (floppy, bouncing) -->
+  <path d="M125 68 Q115 48 112 65 Q110 75 122 74" fill="#C07D4D" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Right ear -->
+  <path d="M158 68 Q168 50 170 68 Q172 78 160 76" fill="#C07D4D" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Inner ear -->
+  <path d="M118 64 Q115 54 114 66" fill="none" stroke="#F4A832" stroke-width="2" stroke-linecap="round"/>
+  <path d="M163 64 Q166 54 167 66" fill="none" stroke="#F4A832" stroke-width="2" stroke-linecap="round"/>
+  <!-- Snout -->
+  <ellipse cx="152" cy="88" rx="12" ry="9" fill="#FFF5E6" stroke="#4A2C2A" stroke-width="2" stroke-linecap="round"/>
+  <!-- Nose -->
+  <ellipse cx="155" cy="84" rx="4.5" ry="3" fill="#4A2C2A"/>
+  <!-- Eye -->
+  <circle cx="140" cy="74" r="3" fill="#4A2C2A"/>
+  <circle cx="141.2" cy="73" r="1" fill="white"/>
+  <!-- Mouth -->
+  <path d="M148 92 Q152 95 156 92" fill="none" stroke="#4A2C2A" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Front left leg (forward stride) -->
+  <path d="M110 130 L118 160 Q118 165 113 165 L110 165" fill="none" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M108 126 Q114 145 118 160 Q118 165 113 165 L110 165 Q107 165 108 160 L104 130" fill="#C07D4D" stroke="none"/>
+  <!-- Front right leg (back position) -->
+  <path d="M120 130 L112 158 Q112 163 117 163 L120 163" fill="none" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Back left leg (back stride) -->
+  <path d="M65 128 L55 158 Q55 163 60 163 L63 163" fill="none" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M63 124 Q58 142 55 158 Q55 163 60 163 L63 163 Q66 163 66 160 L68 128" fill="#C07D4D" stroke="none"/>
+  <!-- Back right leg (forward position) -->
+  <path d="M78 128 L85 156 Q86 161 81 161 L78 161" fill="none" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Paws -->
+  <ellipse cx="112" cy="166" rx="5" ry="3" fill="#F4A832" stroke="#4A2C2A" stroke-width="2"/>
+  <ellipse cx="117" cy="164" rx="5" ry="3" fill="#F4A832" stroke="#4A2C2A" stroke-width="2"/>
+  <ellipse cx="60" cy="164" rx="5" ry="3" fill="#F4A832" stroke="#4A2C2A" stroke-width="2"/>
+  <ellipse cx="82" cy="162" rx="5" ry="3" fill="#F4A832" stroke="#4A2C2A" stroke-width="2"/>
+  <!-- Tail (raised, happy walk) -->
+  <path d="M53 105 Q35 90 40 72" fill="none" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round"/>
+  <path d="M53 105 Q37 92 41 74" fill="none" stroke="#C07D4D" stroke-width="2"/>
+  <!-- Tail wag marks -->
+  <path d="M34 76 L28 72" stroke="#F4A832" stroke-width="2" stroke-linecap="round"/>
+  <path d="M30 84 L24 82" stroke="#F4A832" stroke-width="2" stroke-linecap="round"/>
+  <!-- Collar -->
+  <path d="M126 96 Q140 102 156 96" fill="none" stroke="#F4A832" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Collar tag -->
+  <circle cx="140" cy="102" r="3.5" fill="#F4A832" stroke="#4A2C2A" stroke-width="1.5"/>
+  <!-- Motion lines (walking) -->
+  <path d="M170 100 L180 100" stroke="#C07D4D" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  <path d="M172 108 L182 108" stroke="#C07D4D" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+  <path d="M168 116 L176 116" stroke="#C07D4D" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+</svg>

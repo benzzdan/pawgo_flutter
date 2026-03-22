@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <!-- Happy jumping dog - celebration style, warm brand palette -->
+  <!-- Body (angled for jump pose) -->
+  <ellipse cx="100" cy="115" rx="35" ry="30" fill="#C07D4D" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" transform="rotate(-8, 100, 115)"/>
+  <!-- Head (slightly tilted up) -->
+  <circle cx="105" cy="68" r="28" fill="#C07D4D" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round"/>
+  <!-- Left ear (perked up with joy) -->
+  <path d="M82 52 Q72 30 68 50 Q66 60 78 60" fill="#C07D4D" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Right ear (perked up) -->
+  <path d="M128 52 Q138 30 140 50 Q142 60 130 60" fill="#C07D4D" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Inner ear -->
+  <path d="M76 48 Q73 38 72 50" fill="none" stroke="#F4A832" stroke-width="2" stroke-linecap="round"/>
+  <path d="M134 48 Q137 38 138 50" fill="none" stroke="#F4A832" stroke-width="2" stroke-linecap="round"/>
+  <!-- Snout -->
+  <ellipse cx="108" cy="80" rx="13" ry="10" fill="#FFF5E6" stroke="#4A2C2A" stroke-width="2" stroke-linecap="round"/>
+  <!-- Nose -->
+  <ellipse cx="108" cy="76" rx="5" ry="3.5" fill="#4A2C2A"/>
+  <!-- Eyes (happy/squinting) -->
+  <path d="M92 64 Q95 60 98 64" fill="none" stroke="#4A2C2A" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M114 64 Q117 60 120 64" fill="none" stroke="#4A2C2A" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Big smile -->
+  <path d="M100 84 Q108 92 116 84" fill="none" stroke="#4A2C2A" stroke-width="2" stroke-linecap="round"/>
+  <!-- Tongue -->
+  <path d="M106 86 Q108 94 110 86" fill="#F4A832" stroke="#4A2C2A" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Front legs (stretched out for jump) -->
+  <path d="M78 130 L60 155 Q58 160 63 162 L67 162" fill="none" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M115 125 L135 148 Q138 153 133 155 L129 155" fill="none" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Leg fills -->
+  <path d="M76 126 Q68 140 60 155 Q58 160 63 162 L67 162 Q70 162 70 158 L82 130" fill="#C07D4D" stroke="none"/>
+  <path d="M113 122 Q125 135 135 148 Q138 153 133 155 L129 155 Q126 155 127 150 L118 128" fill="#C07D4D" stroke="none"/>
+  <!-- Back legs (tucked for jump) -->
+  <path d="M72 135 L62 165 Q60 170 65 170 L70 170" fill="none" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round"/>
+  <path d="M125 130 L138 162 Q140 167 135 167 L130 167" fill="none" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round"/>
+  <!-- Paws -->
+  <ellipse cx="65" cy="163" rx="5" ry="3" fill="#F4A832" stroke="#4A2C2A" stroke-width="2"/>
+  <ellipse cx="131" cy="156" rx="5" ry="3" fill="#F4A832" stroke="#4A2C2A" stroke-width="2"/>
+  <ellipse cx="67" cy="171" rx="5" ry="3" fill="#F4A832" stroke="#4A2C2A" stroke-width="2"/>
+  <ellipse cx="133" cy="168" rx="5" ry="3" fill="#F4A832" stroke="#4A2C2A" stroke-width="2"/>
+  <!-- Tail (wagging up!) -->
+  <path d="M65 108 Q45 85 55 65" fill="none" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round"/>
+  <path d="M65 108 Q47 87 56 67" fill="none" stroke="#C07D4D" stroke-width="2"/>
+  <!-- Tail wag motion lines -->
+  <path d="M48 70 L42 65" stroke="#F4A832" stroke-width="2" stroke-linecap="round"/>
+  <path d="M42 78 L36 76" stroke="#F4A832" stroke-width="2" stroke-linecap="round"/>
+  <!-- Collar -->
+  <path d="M82 90 Q105 98 128 90" fill="none" stroke="#F4A832" stroke-width="4" stroke-linecap="round"/>
+  <!-- Collar tag -->
+  <circle cx="105" cy="97" r="4" fill="#F4A832" stroke="#4A2C2A" stroke-width="1.5"/>
+  <!-- Celebration sparkles -->
+  <path d="M40 40 L40 30" stroke="#F4A832" stroke-width="2" stroke-linecap="round"/>
+  <path d="M35 35 L45 35" stroke="#F4A832" stroke-width="2" stroke-linecap="round"/>
+  <path d="M155 45 L155 35" stroke="#F4A832" stroke-width="2" stroke-linecap="round"/>
+  <path d="M150 40 L160 40" stroke="#F4A832" stroke-width="2" stroke-linecap="round"/>
+  <path d="M150 20 L150 14" stroke="#C07D4D" stroke-width="2" stroke-linecap="round"/>
+  <path d="M147 17 L153 17" stroke="#C07D4D" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="45" cy="55" r="2" fill="#F4A832"/>
+  <circle cx="160" cy="60" r="2" fill="#F4A832"/>
+  <circle cx="30" cy="50" r="1.5" fill="#C07D4D"/>
+</svg>
