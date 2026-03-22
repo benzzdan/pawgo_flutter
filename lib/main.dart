@@ -18,6 +18,7 @@ import 'package:pawgo/screens/walker_bookings_screen.dart';
 import 'package:pawgo/screens/review_screen.dart';
 import 'package:pawgo/screens/walker_earnings_screen.dart';
 import 'package:pawgo/screens/insurance_claim_screen.dart';
+import 'package:pawgo/screens/walker_application_screen.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:pawgo/services/ad_service.dart';
 import 'package:pawgo/services/analytics_service.dart';
@@ -101,6 +102,7 @@ class PawgoApp extends StatelessWidget {
         '/review': (context) => const ReviewScreen(),
         '/walker-earnings': (context) => const WalkerEarningsScreen(),
         '/insurance-claim': (context) => const InsuranceClaimScreen(),
+        '/walker-application': (context) => const WalkerApplicationScreen(),
       },
     );
   }
@@ -136,7 +138,9 @@ class _AuthGateState extends State<_AuthGate> {
       } else if (event == AuthChangeEvent.signedOut) {
         AnalyticsService.instance.reset();
         GpsBroadcastService.instance.stopBroadcasting();
-        Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+        if (ModalRoute.of(context)?.settings.name != '/') {
+          Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+        }
       }
     });
   }
