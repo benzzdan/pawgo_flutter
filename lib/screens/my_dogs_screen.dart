@@ -635,11 +635,29 @@ class _AddDogDialog extends StatefulWidget {
   State<_AddDogDialog> createState() => _AddDogDialogState();
 }
 
-class _AddDogDialogState extends State<_AddDogDialog> {
+class _AddDogDialogState extends State<_AddDogDialog>
+    with SingleTickerProviderStateMixin {
   final _nameController = TextEditingController();
   final _breedController = TextEditingController();
   final _ageController = TextEditingController();
   final _weightController = TextEditingController();
+  late final AnimationController _exitController;
+  bool _nameHasText = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _exitController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _nameController.addListener(() {
+      final hasText = _nameController.text.trim().isNotEmpty;
+      if (hasText != _nameHasText) {
+        setState(() => _nameHasText = hasText);
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -647,10 +665,11 @@ class _AddDogDialogState extends State<_AddDogDialog> {
     _breedController.dispose();
     _ageController.dispose();
     _weightController.dispose();
+    _exitController.dispose();
     super.dispose();
   }
 
-  void _save() {
+  Future<void> _save() async {
     if (_nameController.text.trim().isEmpty) return;
 
     final dog = Dog(
@@ -668,58 +687,106 @@ class _AddDogDialogState extends State<_AddDogDialog> {
       image: '🐕',
     );
 
-    Navigator.pop(context, dog);
+    // Fade out form content before navigating.
+    await _exitController.forward();
+    if (mounted) Navigator.pop(context, dog);
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(
-        'Add a Dog',
-        style: GoogleFonts.nunito(
-          fontWeight: FontWeight.w800,
-          fontSize: 20,
+    return FadeTransition(
+      opacity: Tween<double>(begin: 1.0, end: 0.0).animate(_exitController),
+      child: AlertDialog(
+        title: Text(
+          'Add a Dog',
+          style: GoogleFonts.nunito(
+            fontWeight: FontWeight.w800,
+            fontSize: 20,
+          ),
         ),
-      ),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildField(_nameController, 'Name *', 'e.g. Buddy'),
-            const SizedBox(height: 12),
-            _buildField(_breedController, 'Breed', 'e.g. Golden Retriever'),
-            const SizedBox(height: 12),
-            _buildField(_ageController, 'Age', 'e.g. 3 yrs'),
-            const SizedBox(height: 12),
-            _buildField(_weightController, 'Weight', 'e.g. 65 lbs'),
-          ],
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Dog illustration at the top.
+              SvgPicture.asset(
+                'lib/assets/illustrations/dog_sitting.svg',
+                width: 80,
+                height: 80,
+              )
+                  .animate()
+                  .scale(
+                    begin: const Offset(0.9, 0.9),
+                    end: const Offset(1.0, 1.0),
+                    duration: 400.ms,
+                    curve: Curves.easeOut,
+                  )
+                  .fadeIn(duration: 300.ms),
+              const SizedBox(height: 16),
+              // Staggered form fields: name, breed, age, weight — each 80ms apart.
+              _buildField(_nameController, 'Name *', 'e.g. Buddy')
+                  .animate()
+                  .fadeIn(duration: 300.ms, delay: 0.ms)
+                  .slideY(begin: 0.1, end: 0, duration: 300.ms),
+              const SizedBox(height: 12),
+              _buildField(
+                      _breedController, 'Breed', 'e.g. Golden Retriever')
+                  .animate()
+                  .fadeIn(duration: 300.ms, delay: 80.ms)
+                  .slideY(begin: 0.1, end: 0, duration: 300.ms, delay: 80.ms),
+              const SizedBox(height: 12),
+              _buildField(_ageController, 'Age', 'e.g. 3 yrs')
+                  .animate()
+                  .fadeIn(duration: 300.ms, delay: 160.ms)
+                  .slideY(
+                      begin: 0.1, end: 0, duration: 300.ms, delay: 160.ms),
+              const SizedBox(height: 12),
+              _buildField(_weightController, 'Weight', 'e.g. 65 lbs')
+                  .animate()
+                  .fadeIn(duration: 300.ms, delay: 240.ms)
+                  .slideY(
+                      begin: 0.1, end: 0, duration: 300.ms, delay: 240.ms),
+            ],
+          ),
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(
-            'Cancel',
-            style: GoogleFonts.nunito(
-              fontWeight: FontWeight.w700,
-              color: AppColors.textSecondary,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.nunito(
+                fontWeight: FontWeight.w700,
+                color: AppColors.textSecondary,
+              ),
             ),
           ),
-        ),
-        FilledButton(
-          onPressed: _save,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.orange500,
-          ),
-          child: Text(
-            'Save',
-            style: GoogleFonts.nunito(
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-          ),
-        ),
-      ],
+          // Save button with subtle pulse when name is filled.
+          Builder(builder: (context) {
+            final button = FilledButton(
+              onPressed: _save,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.orange500,
+              ),
+              child: Text(
+                'Save',
+                style: GoogleFonts.nunito(
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            );
+            if (!_nameHasText) return button;
+            return button
+                .animate(onPlay: (c) => c.repeat(reverse: true))
+                .scale(
+                  begin: const Offset(1.0, 1.0),
+                  end: const Offset(1.02, 1.02),
+                  duration: 2000.ms,
+                  curve: Curves.easeInOut,
+                );
+          }),
+        ],
+      ),
     );
   }
 
