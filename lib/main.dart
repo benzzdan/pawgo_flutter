@@ -27,6 +27,7 @@ import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:pawgo/services/ad_service.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:pawgo/services/role_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -80,8 +81,9 @@ class PawgoApp extends StatelessWidget {
     final session = Supabase.instance.client.auth.currentSession;
     final initialRoute = session != null ? '/home' : '/';
 
-    // Resume GPS broadcast if walker has an active walk on app restart
+    // Initialize role detection and resume GPS broadcast on app restart
     if (session != null) {
+      RoleService.instance.initialize();
       GpsBroadcastService.instance.resumeIfActiveWalk();
     }
 
@@ -144,11 +146,13 @@ class _AuthGateState extends State<_AuthGate> {
         if (userId != null) {
           AnalyticsService.instance.identify(userId);
         }
+        RoleService.instance.initialize();
         Navigator.pushReplacementNamed(context, '/home');
         // Resume GPS broadcast if walker has an active walk
         GpsBroadcastService.instance.resumeIfActiveWalk();
       } else if (event == AuthChangeEvent.signedOut) {
         AnalyticsService.instance.reset();
+        RoleService.instance.reset();
         GpsBroadcastService.instance.stopBroadcasting();
         if (ModalRoute.of(context)?.settings.name != '/') {
           Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
