@@ -27,7 +27,12 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
   bool _isSending = false;
   bool _isUploading = false;
   RealtimeChannel? _channel;
+  RealtimeChannel? _bookingChannel;
   String? _currentUserId;
+  String? _bookingStatus;
+
+  /// Whether chat input is enabled (only during active walks).
+  bool get _isChatActive => _bookingStatus == 'walk_started';
 
   @override
   void didChangeDependencies() {
@@ -46,8 +51,8 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
       _otherPartyName = args['other_party_name'] as String?;
     }
     if (_bookingId != null) {
+      _fetchBookingStatus();
       _fetchMessages();
-      _subscribeToMessages();
     }
   }
 
@@ -56,7 +61,74 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
     _messageController.dispose();
     _scrollController.dispose();
     _channel?.unsubscribe();
+    _bookingChannel?.unsubscribe();
     super.dispose();
+  }
+
+  Future<void> _fetchBookingStatus() async {
+    if (_bookingId == null) return;
+    try {
+      final data = await withRetry(() => _supabase
+          .from('bookings')
+          .select('status')
+          .eq('id', _bookingId!)
+          .single());
+      if (!mounted) return;
+      setState(() {
+        _bookingStatus = data['status'] as String?;
+      });
+      // Only subscribe to message Realtime if walk is active
+      if (_isChatActive) {
+        _subscribeToMessages();
+      }
+      _subscribeToBookingStatus();
+    } catch (e) {
+      final appError = AppError.from(e);
+      if (appError.isAuthError) {
+        ErrorHandler.instance.navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
+        return;
+      }
+      if (mounted) {
+        // Default to allowing chat on error (fail-open for UX)
+        setState(() => _bookingStatus = 'walk_started');
+        _subscribeToMessages();
+      }
+    }
+  }
+
+  void _subscribeToBookingStatus() {
+    if (_bookingId == null) return;
+    _bookingChannel?.unsubscribe();
+
+    _bookingChannel = _supabase
+        .channel('chat_booking_status_$_bookingId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'bookings',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: _bookingId!,
+          ),
+          callback: (payload) {
+            final newStatus = payload.newRecord['status'] as String?;
+            if (!mounted || newStatus == null) return;
+            final wasActive = _isChatActive;
+            setState(() => _bookingStatus = newStatus);
+            // If walk just became active, start message subscription
+            if (!wasActive && _isChatActive) {
+              _subscribeToMessages();
+            }
+            // If walk just ended, clean up message subscription
+            if (wasActive && !_isChatActive) {
+              _channel?.unsubscribe();
+              _channel = null;
+            }
+          },
+        )
+        .subscribe();
   }
 
   Future<void> _fetchMessages() async {
@@ -331,8 +403,8 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
                   ? const Center(child: CircularProgressIndicator())
                   : _buildMessages(),
             ),
-            _buildQuickActions(),
-            _buildInput(),
+            if (_isChatActive) _buildQuickActions(),
+            _isChatActive ? _buildInput() : _buildDisabledInput(),
           ],
         ),
       ),
@@ -582,6 +654,46 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDisabledInput() {
+    final statusText = _bookingStatus == 'walk_completed'
+        ? 'This walk has ended. Chat is read-only.'
+        : 'Chat is available during active walks.';
+
+    return Container(
+      color: AppColors.white,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              _bookingStatus == 'walk_completed'
+                  ? Icons.lock_outline
+                  : Icons.chat_bubble_outline,
+              size: 18,
+              color: AppColors.textTertiary,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                statusText,
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textTertiary,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
