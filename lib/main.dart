@@ -21,6 +21,7 @@ import 'package:pawgo/screens/insurance_claim_screen.dart';
 import 'package:pawgo/screens/walker_application_screen.dart';
 import 'package:pawgo/screens/walker_application_step2_screen.dart';
 import 'package:pawgo/screens/walker_application_step3_screen.dart';
+import 'package:pawgo/screens/walker_application_step4_screen.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:pawgo/services/ad_service.dart';
 import 'package:pawgo/services/analytics_service.dart';
@@ -109,6 +110,8 @@ class PawgoApp extends StatelessWidget {
             const WalkerApplicationStep2Screen(),
         '/walker-application-step3': (context) =>
             const WalkerApplicationStep3Screen(),
+        '/walker-application-step4': (context) =>
+            const WalkerApplicationStep4Screen(),
       },
     );
   }
