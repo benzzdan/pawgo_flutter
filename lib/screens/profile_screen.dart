@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/models/mock_data.dart';
+import 'package:pawgo/services/role_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -17,11 +18,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _applicationLoading = true;
 
   final _supabase = Supabase.instance.client;
+  final _roleService = RoleService.instance;
 
   @override
   void initState() {
     super.initState();
     _checkApplicationStatus();
+    _roleService.role.addListener(_onRoleChanged);
+    _roleService.activeRole.addListener(_onRoleChanged);
+  }
+
+  @override
+  void dispose() {
+    _roleService.role.removeListener(_onRoleChanged);
+    _roleService.activeRole.removeListener(_onRoleChanged);
+    super.dispose();
+  }
+
+  void _onRoleChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _checkApplicationStatus() async {
@@ -376,7 +391,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return const SizedBox.shrink();
     }
 
-    // If user has a pending/in-progress/rejected application, show status card
+    final userRole = _roleService.role.value;
+
+    // If user is both owner and walker, show role toggle
+    if (userRole == UserRole.both) {
+      return _buildRoleToggle();
+    }
+
+    // If user is walker-only (unlikely but handled), no card needed
+    if (userRole == UserRole.walker) {
+      return const SizedBox.shrink();
+    }
+
+    // Owner-only: show "Become a Walker" or "Application Status"
     final hasApplication = _applicationStatus != null &&
         _applicationStatus != 'approved';
 
@@ -396,9 +423,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   : 'Check your application status';
       icon = Icons.assignment_outlined;
       route = '/walker-application-status';
-    } else if (_applicationStatus == 'approved') {
-      // User is already a walker — hide card (role toggle will handle this in US-012)
-      return const SizedBox.shrink();
     } else {
       title = 'Become a Walker';
       subtitle = 'Earn money walking dogs in your neighborhood';
@@ -411,6 +435,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         await Navigator.pushNamed(context, route);
         // Refresh status when returning from application or status screen
         _checkApplicationStatus();
+        _roleService.refresh();
       },
       child: Container(
         padding: const EdgeInsets.all(20),
@@ -468,6 +493,117 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.white),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildRoleToggle() {
+    final isWalkerMode = _roleService.activeRole.value == ActiveRole.walker;
+    final activeColor =
+        isWalkerMode ? AppColors.cacaoBrown : AppColors.warmCaramel;
+    final modeLabel = isWalkerMode ? 'Walker Mode' : 'Owner Mode';
+    final modeIcon = isWalkerMode ? Icons.directions_walk : Icons.pets;
+    final switchLabel = isWalkerMode ? 'Switch to Owner' : 'Switch to Walker';
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 12,
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Current mode indicator
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: activeColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(modeIcon, size: 24, color: activeColor),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      modeLabel,
+                      style: GoogleFonts.nunito(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isWalkerMode
+                          ? 'You are in walker mode'
+                          : 'You are in pet owner mode',
+                      style: GoogleFonts.nunito(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          // Switch role button
+          GestureDetector(
+            onTap: () {
+              _roleService.switchRole();
+              Navigator.pushNamedAndRemoveUntil(
+                  context, '/home', (route) => false);
+            },
+            child: Container(
+              width: double.infinity,
+              height: 48,
+              decoration: BoxDecoration(
+                color: activeColor,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: activeColor.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    isWalkerMode ? Icons.pets : Icons.directions_walk,
+                    size: 18,
+                    color: Colors.white,
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text(
+                    switchLabel,
+                    style: GoogleFonts.nunito(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
