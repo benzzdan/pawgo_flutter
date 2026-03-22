@@ -1,586 +1,582 @@
-# Pawgo - Live GPS Walk Tracking & Walk Chat Architecture
+# Pawgo: Live GPS Walk Tracking & Walk Chat Architecture
 
-## Overview
-
-This document covers the architecture for two real-time features in Pawgo:
-
-1. **Live GPS Tracking** - Pet owners see their dog walker's real-time location on a map
-2. **Walk Chat** - Pet owners and walkers exchange text, photos, and quick status updates during active walks
-
-Both features leverage **Supabase Realtime** (Postgres Changes) for sub-second data delivery between devices.
+This document covers how real-time GPS tracking and walk chat work in Pawgo, including data flows, table schemas, Supabase Realtime configuration, and how to test with physical devices.
 
 ---
 
-## System Architecture Diagram
+## Table of Contents
+
+1. [System Overview](#system-overview)
+2. [GPS Tracking Architecture](#gps-tracking-architecture)
+3. [Walk Chat Architecture](#walk-chat-architecture)
+4. [Database Schema](#database-schema)
+5. [Production Architecture](#production-architecture)
+6. [Testing Guide](#testing-guide)
+
+---
+
+## System Overview
+
+Pawgo uses **Supabase Realtime** (Postgres Changes) as the transport layer for both GPS location updates and chat messages. The walker's Flutter app writes data to Supabase tables, and the pet owner's app subscribes to changes on those tables filtered by `booking_id`.
 
 ```mermaid
 graph TB
     subgraph "Walker's Phone"
-        WA[Flutter App - Walker View]
-        GPS[Geolocator Package]
+        WA[Walker Flutter App]
+        GPS[GPS Sensor / Geolocator]
         CAM[Camera / Gallery]
-        GBS[GpsBroadcastService Singleton]
     end
 
     subgraph "Supabase Backend"
-        subgraph "Database (PostgreSQL)"
-            WL[walk_locations table]
-            MSG[messages table]
-            BK[bookings table]
-        end
-        RT[Supabase Realtime Engine]
-        ST[Supabase Storage - walk-media bucket]
+        RT[Supabase Realtime]
+        DB[(PostgreSQL)]
+        ST[Supabase Storage]
         EF[Edge Functions]
         RLS[Row Level Security]
     end
 
     subgraph "Owner's Phone"
-        OA[Flutter App - Owner View]
-        GM[Google Maps Widget]
-        CH[Chat Screen]
-        RM[RealtimeManager]
+        OA[Owner Flutter App]
+        MAP[Google Maps Widget]
+        CHAT[Chat UI]
     end
 
-    GPS -->|Every 5s| GBS
-    GBS -->|INSERT lat/lng| WL
-    WL -->|Postgres Changes| RT
-    RT -->|WebSocket push| OA
-    OA --> GM
+    GPS -->|Every 5s| WA
+    WA -->|INSERT walk_locations| DB
+    DB -->|Postgres Changes| RT
+    RT -->|Realtime subscription| OA
+    OA --> MAP
 
-    WA -->|Send message| MSG
-    CAM -->|Upload media| EF
+    WA -->|INSERT messages| DB
+    WA -->|Upload media| EF
     EF -->|Store file| ST
-    EF -->|INSERT message with URL| MSG
-    MSG -->|Postgres Changes| RT
-    RT -->|WebSocket push| OA
-    OA --> CH
+    EF -->|INSERT message with URL| DB
+    DB -->|Postgres Changes| RT
+    RT -->|Realtime subscription| OA
+    OA --> CHAT
 
-    RLS -->|Enforces access| WL
-    RLS -->|Enforces access| MSG
-
-    BK -->|Status changes| RT
-    RT -->|Walk ended notification| OA
-    RT -->|Walk ended notification| WA
+    RLS -->|Enforces access| DB
 ```
 
 ---
 
-## 1. GPS Tracking Architecture
+## GPS Tracking Architecture
 
-### Data Flow: Walker Phone to Owner Map
+### How GPS Data Flows
+
+The walker's phone captures GPS coordinates every 5 seconds and inserts them into the `walk_locations` table. The pet owner's app subscribes to Supabase Realtime Postgres Changes on that table, filtered by `booking_id`, to receive updates near-instantly.
 
 ```mermaid
 sequenceDiagram
-    participant GPS as Geolocator (Walker Phone)
-    participant GBS as GpsBroadcastService
-    participant DB as Supabase DB (walk_locations)
+    participant GPS as Walker Phone GPS
+    participant WApp as Walker App<br/>(GpsBroadcastService)
+    participant Supa as Supabase<br/>(walk_locations table)
     participant RT as Supabase Realtime
-    participant OWN as Owner App (ActiveWalkScreen)
-    participant MAP as Google Maps Widget
+    participant OApp as Owner App<br/>(ActiveWalkScreen)
+    participant Map as Google Maps Widget
 
-    Note over GBS: Walk status = "walk_started"
-    GBS->>GPS: Request position (high accuracy)
-    GPS-->>GBS: Position(lat, lng, accuracy)
-    GBS->>DB: INSERT INTO walk_locations (booking_id, lat, lng, accuracy_m, recorded_at)
-    DB-->>RT: Postgres Change event (INSERT)
-    RT-->>OWN: WebSocket push (new row payload)
-    OWN->>MAP: Add point to polyline + update marker
-    MAP-->>OWN: Map re-renders
+    Note over WApp: Walk status changes to 'walk_started'
+    WApp->>GPS: Request location (high accuracy)
+    GPS-->>WApp: Position (lat, lng, accuracy)
+    WApp->>Supa: INSERT {booking_id, lat, lng, accuracy_m, recorded_at}
 
-    Note over GBS: Timer fires every 5 seconds
+    Note over Supa,RT: Postgres Change event fires (INSERT)
+    Supa->>RT: Broadcast to channel subscribers
+
+    RT->>OApp: New walk_locations row received
+    OApp->>Map: Add LatLng to route polyline
+    OApp->>Map: Update walker marker position
+    OApp->>Map: Animate camera to new position
+
+    Note over WApp: Timer fires again after 5 seconds
     loop Every 5 seconds
-        GBS->>GPS: getCurrentPosition()
-        GPS-->>GBS: Position
-        GBS->>DB: INSERT walk_locations
-        DB-->>RT: Change event
-        RT-->>OWN: Push
-        OWN->>MAP: Update
+        WApp->>GPS: Request location
+        GPS-->>WApp: Position
+        WApp->>Supa: INSERT row
+        Supa->>RT: Broadcast
+        RT->>OApp: New point
+        OApp->>Map: Update map
     end
 
-    Note over GBS: Walk ends (status = "walk_completed")
-    GBS->>GBS: stopBroadcasting() - Timer cancelled
+    Note over WApp: Walk status changes to 'walk_completed'
+    WApp->>WApp: stopBroadcasting() — Timer cancelled
 ```
 
-### GPS Components
+### GPS Broadcast Service (Walker Side)
 
-| Component | Location | Role |
-|-----------|----------|------|
-| `GpsBroadcastService` | `lib/services/gps_broadcast_service.dart` | Singleton that captures GPS every 5s and inserts into `walk_locations` |
-| `ActiveWalkScreen` | `lib/screens/active_walk_screen.dart` | Subscribes to Realtime, renders Google Map with polyline + markers |
-| `RealtimeManager` | `lib/services/realtime_manager.dart` | Auto-reconnects Realtime channels, falls back to REST polling on disconnect |
-| `walk_locations` table | `supabase/migrations/006_walk_locations.sql` | Append-only GPS time-series data |
+**File:** `lib/services/gps_broadcast_service.dart`
 
-### Database Schema: `walk_locations`
+The `GpsBroadcastService` is a **singleton** that persists across screen navigation. This is critical — the walker can navigate away from the active walk screen and GPS broadcasting continues in the background.
 
-```sql
-CREATE TABLE public.walk_locations (
-    id          BIGSERIAL PRIMARY KEY,    -- High-volume time-series, not UUID
-    booking_id  UUID NOT NULL REFERENCES public.bookings(id) ON DELETE CASCADE,
-    lat         DOUBLE PRECISION NOT NULL,
-    lng         DOUBLE PRECISION NOT NULL,
-    accuracy_m  DOUBLE PRECISION,
-    recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+**Key behaviors:**
+- **Start:** `startBroadcasting(bookingId)` — requests location permissions, sends initial position immediately, then starts a 5-second `Timer.periodic`
+- **Stop:** `stopBroadcasting()` — cancels the timer, clears state
+- **Resume:** `resumeIfActiveWalk()` — called on app startup; queries for active walks assigned to the current walker and resumes broadcasting if found
+- **Accuracy:** Uses `LocationAccuracy.high` with `distanceFilter: 0` (reports every position, not just when moved)
+- **Battery:** High accuracy is intentional for walking use case; the 5-second interval balances accuracy with battery life
 
-CREATE INDEX idx_walk_locations_booking ON walk_locations(booking_id);
-CREATE INDEX idx_walk_locations_recorded ON walk_locations(recorded_at);
+**Permissions required:**
+| Platform | Permission | Purpose |
+|----------|-----------|---------|
+| iOS | `NSLocationWhenInUseUsageDescription` | Foreground GPS |
+| iOS | `NSLocationAlwaysAndWhenInUseUsageDescription` | Background GPS |
+| iOS | `UIBackgroundModes: [location]` | Background execution |
+| Android | `ACCESS_FINE_LOCATION` | GPS access |
+| Android | `ACCESS_BACKGROUND_LOCATION` | Background GPS |
+| Android | `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_LOCATION` | Background service |
+
+### GPS Receiver (Owner Side)
+
+**File:** `lib/screens/active_walk_screen.dart`
+
+The owner's `ActiveWalkScreen` does three things on load:
+
+1. **Load existing locations** — Fetches all `walk_locations` rows for the booking (ordered by `recorded_at ASC`) to draw the route so far
+2. **Subscribe to new locations** — Sets up a Supabase Realtime channel on `walk_locations` filtered by `booking_id` for INSERT events
+3. **Render on Google Maps** — Maintains a `List<LatLng>` of route points, draws a blue polyline, and places a marker at the walker's current position
+
+**GPS Signal Lost Detection:**
+- A 30-second timeout timer is reset on each new GPS point
+- If no point arrives within 30 seconds, a "SIGNAL LOST" warning badge appears
+- The last known position marker remains on the map
+
+**Walk Stats Displayed:**
+- Elapsed time (calculated from `booking.started_at`)
+- Distance traveled (Haversine formula across all route points)
+- Total GPS points collected
+
+### Realtime Subscription Setup (Owner)
+
+```dart
+// Subscribe to GPS location updates for this booking
+_locationChannel = Supabase.instance.client
+    .channel('walk_locations_$_bookingId')
+    .onPostgresChanges(
+      event: PostgresChangeEvent.insert,
+      schema: 'public',
+      table: 'walk_locations',
+      filter: PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'booking_id',
+        value: _bookingId!,
+      ),
+      callback: (payload) {
+        final newRecord = payload.newRecord;
+        final lat = (newRecord['lat'] as num).toDouble();
+        final lng = (newRecord['lng'] as num).toDouble();
+        // Update map...
+      },
+    )
+    .subscribe();
 ```
-
-### GPS Broadcast Lifecycle
-
-1. **Walk starts** - `start-walk` Edge Function sets booking status to `walk_started`
-2. **ActiveWalkScreen detects walker role** - Compares `auth.currentUser.id` to `booking.walkers.user_id`
-3. **Broadcasting begins** - `GpsBroadcastService.startBroadcasting(bookingId)` starts 5s timer
-4. **App restart recovery** - `main.dart` calls `resumeIfActiveWalk()` on startup to detect and resume active broadcasts
-5. **Walk ends** - `end-walk` Edge Function sets status to `walk_completed`, GPS timer is cancelled
-
-### GPS Signal Lost Detection
-
-- 30-second timeout timer resets on each new location point
-- If no GPS point arrives in 30s, UI shows "SIGNAL LOST" badge
-- Last known position remains visible on map
-- Polyline continues from last known point when signal resumes
-
-### Map Rendering Details
-
-- **Package**: `google_maps_flutter`
-- **Polyline**: Sky Blue (#3B82F6) connecting all GPS points in order
-- **Walker Marker**: Current position, updates on each new point
-- **Start Marker**: Green pin at first GPS point
-- **Auto-center**: Map follows walker position
-- **Stats**: Elapsed time (from `started_at`), distance (Haversine formula), point count
 
 ---
 
-## 2. Walk Chat Architecture
+## Walk Chat Architecture
 
-### Message Flow
+### How Chat Messages Flow
+
+Both the walker and owner can send text messages, photos/videos, and quick status updates. All messages go through the `messages` table with Supabase Realtime broadcasting INSERTs to both participants.
 
 ```mermaid
 sequenceDiagram
-    participant W as Walker App
-    participant DB as Supabase DB (messages)
-    participant ST as Supabase Storage
-    participant EF as Edge Function (upload-walk-media)
+    participant Walker as Walker App
+    participant Supa as Supabase<br/>(messages table)
+    participant Storage as Supabase Storage
+    participant EF as upload-walk-media<br/>Edge Function
     participant RT as Supabase Realtime
-    participant O as Owner App
+    participant Owner as Owner App
 
-    Note over W,O: Text Message
-    W->>DB: INSERT INTO messages (booking_id, sender_id, content)
-    DB-->>RT: Postgres Change (INSERT)
-    RT-->>O: WebSocket push (new message ID)
-    O->>DB: SELECT * FROM messages WHERE id = ? (with user join)
-    O->>O: Render message bubble
+    Note over Walker,Owner: Both subscribe to messages Realtime channel on screen open
 
-    Note over W,O: Photo Message
-    W->>EF: POST multipart (booking_id, file)
-    EF->>ST: Upload to walk-media/{booking_id}/{uuid}.{ext}
-    EF->>DB: INSERT INTO messages (booking_id, sender_id, media_url, media_type='image')
-    DB-->>RT: Postgres Change (INSERT)
-    RT-->>O: WebSocket push
-    O->>DB: Fetch full message with user join
-    O->>O: Render image thumbnail
+    rect rgb(230, 245, 255)
+        Note over Walker: Text Message
+        Walker->>Supa: INSERT {booking_id, sender_id, content}
+        Supa->>RT: Broadcast INSERT
+        RT->>Owner: New message notification
+        Owner->>Supa: Fetch full message with user join
+        Owner->>Owner: Render message bubble
+    end
 
-    Note over W,O: Quick Status Update
-    W->>DB: INSERT INTO messages (booking_id, sender_id, content='At the park!', media_type='status_update')
-    DB-->>RT: Postgres Change (INSERT)
-    RT-->>O: WebSocket push
-    O->>DB: Fetch full message
-    O->>O: Render as centered pill badge
-```
+    rect rgb(255, 245, 230)
+        Note over Walker: Photo Message
+        Walker->>EF: invoke('upload-walk-media', {file, booking_id})
+        EF->>Storage: Upload to walk-media bucket
+        Storage-->>EF: Public URL
+        EF->>Supa: INSERT {booking_id, sender_id, media_url, media_type: 'image'}
+        Supa->>RT: Broadcast INSERT
+        RT->>Owner: New message notification
+        Owner->>Supa: Fetch full message with user join
+        Owner->>Owner: Render image thumbnail
+    end
 
-### Chat Components
-
-| Component | Location | Role |
-|-----------|----------|------|
-| `WalkerChatScreen` | `lib/screens/walker_chat_screen.dart` | Chat UI with text input, media picker, status buttons |
-| `upload-walk-media` | `supabase/functions/upload-walk-media/index.ts` | Validates and uploads media, creates message record |
-| `RealtimeManager` | `lib/services/realtime_manager.dart` | Resilient Realtime subscription with polling fallback |
-| `messages` table | `supabase/migrations/007_messages.sql` | All chat messages (text, media, status updates) |
-
-### Database Schema: `messages`
-
-```sql
-CREATE TABLE public.messages (
-    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    booking_id UUID NOT NULL REFERENCES public.bookings(id) ON DELETE CASCADE,
-    sender_id  UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    content    TEXT,                          -- Text content (nullable for media-only)
-    media_url  TEXT,                          -- Supabase Storage URL
-    media_type TEXT CHECK (media_type IN ('image', 'video', 'status_update')),
-    is_read    BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX idx_messages_booking ON messages(booking_id);
+    rect rgb(230, 255, 230)
+        Note over Walker: Quick Status Update
+        Walker->>Supa: INSERT {booking_id, sender_id, content: 'Pee break', media_type: 'status_update'}
+        Supa->>RT: Broadcast INSERT
+        RT->>Owner: New message notification
+        Owner->>Owner: Render as colored pill badge
+    end
 ```
 
 ### Message Types
 
 | Type | `media_type` | `content` | `media_url` | Rendering |
 |------|-------------|-----------|-------------|-----------|
-| Text | NULL | Message text | NULL | Chat bubble (orange=self, white=other) |
-| Photo | `'image'` | NULL | Storage URL | Inline thumbnail, tap to expand |
-| Video | `'video'` | NULL | Storage URL | Thumbnail with play icon |
-| Status | `'status_update'` | Status text | NULL | Centered pill badge |
+| Text | `NULL` | Message text | `NULL` | Chat bubble (orange=sender, white=receiver) |
+| Photo | `'image'` | Optional caption | Image URL | Thumbnail (220x180) with tap-to-expand |
+| Video | `'video'` | Optional caption | Video URL | Dark container with play icon |
+| Status | `'status_update'` | Status text | `NULL` | Centered colored pill badge with icon |
 
-### Predefined Quick Status Updates
+### Available Quick Status Updates
 
-- Pee break completed
-- Poop break completed
-- Water break
+| Status | Content Text | Icon | Color |
+|--------|-------------|------|-------|
+| Pee break | "Pee break completed" | Pets icon | Orange |
+| Poop | "Poop pickup completed" | Eco icon | Green |
+| Water | "Water break taken" | Water drop icon | Blue |
 
-These are sent as messages with `media_type: 'status_update'` and rendered distinctly.
-
----
-
-## 3. Supabase Realtime Configuration
-
-### How Realtime Works
-
-Supabase Realtime uses **Postgres logical replication** to broadcast database changes over WebSocket connections. No additional configuration is needed beyond enabling Realtime on the table (done in Supabase Dashboard or via SQL).
-
-### Channel Setup Pattern (Flutter)
+### Chat Realtime Subscription
 
 ```dart
-// GPS tracking subscription (owner side)
-final channel = Supabase.instance.client.channel('walk_locations_$bookingId');
-channel.onPostgresChanges(
-  event: PostgresChangeEvent.insert,
-  schema: 'public',
-  table: 'walk_locations',
-  filter: PostgresChangeFilter(
-    type: PostgresChangeFilterType.eq,
-    column: 'booking_id',
-    value: bookingId,
-  ),
-  callback: (payload) {
-    final newPoint = payload.newRecord;
-    // Update map with new GPS point
-  },
-).subscribe();
-
-// Chat subscription
-final chatChannel = Supabase.instance.client.channel('messages:$bookingId');
-chatChannel.onPostgresChanges(
-  event: PostgresChangeEvent.insert,
-  schema: 'public',
-  table: 'messages',
-  filter: PostgresChangeFilter(
-    type: PostgresChangeFilterType.eq,
-    column: 'booking_id',
-    value: bookingId,
-  ),
-  callback: (payload) {
-    // Realtime payload doesn't include JOINs, so fetch full message:
-    final messageId = payload.newRecord['id'];
-    // SELECT * FROM messages WHERE id = messageId (with user join)
-  },
-).subscribe();
+// Subscribe to new chat messages for this booking
+_channel = _supabase
+    .channel('messages:$_bookingId')
+    .onPostgresChanges(
+      event: PostgresChangeEvent.insert,
+      schema: 'public',
+      table: 'messages',
+      filter: PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'booking_id',
+        value: _bookingId!,
+      ),
+      callback: (payload) {
+        final newMessage = payload.newRecord;
+        // Realtime INSERT doesn't include joined user data
+        // Must fetch full message separately
+        _fetchSingleMessage(newMessage['id'].toString());
+      },
+    )
+    .subscribe();
 ```
 
-### Realtime Resilience
-
-The `RealtimeManager` class handles connection drops:
-
-1. **Disconnect detected** - Switches to REST polling every 10 seconds
-2. **Polling active** - Queries latest data via standard Supabase client
-3. **Reconnect attempt** - After 5 seconds, tries to re-establish Realtime channel
-4. **Resume** - When Realtime reconnects, stops polling and resumes live updates
+**Important:** Realtime INSERT payloads only contain the raw table row — no FK joins. The app must fetch the full message with user join data separately via a REST query.
 
 ---
 
-## 4. Row-Level Security (RLS)
+## Database Schema
 
-### Walk Locations RLS
+### walk_locations (GPS Points)
 
-```sql
--- Only assigned walker can INSERT GPS points
-CREATE POLICY walk_locations_insert_walker ON walk_locations FOR INSERT
-WITH CHECK (
-  booking_id IN (
-    SELECT b.id FROM bookings b
-    JOIN walkers w ON b.walker_id = w.id
-    WHERE w.user_id = auth.uid() AND b.status = 'walk_started'
-  )
-);
-
--- Both owner and walker can SELECT GPS points
-CREATE POLICY walk_locations_select_participant ON walk_locations FOR SELECT
-USING (
-  booking_id IN (
-    SELECT b.id FROM bookings b
-    WHERE b.owner_id = auth.uid()
-    OR b.walker_id IN (SELECT id FROM walkers WHERE user_id = auth.uid())
-  )
-);
-```
-
-### Messages RLS
+**Migration:** `supabase/migrations/006_walk_locations.sql`
 
 ```sql
--- Participants can read messages
-CREATE POLICY messages_select_participant ON messages FOR SELECT
-USING (
-  booking_id IN (
-    SELECT id FROM bookings
-    WHERE owner_id = auth.uid()
-    OR walker_id IN (SELECT id FROM walkers WHERE user_id = auth.uid())
-  )
+CREATE TABLE public.walk_locations (
+    id          BIGSERIAL PRIMARY KEY,    -- BIGSERIAL for time-series data
+    booking_id  UUID NOT NULL REFERENCES public.bookings(id) ON DELETE CASCADE,
+    lat         DOUBLE PRECISION NOT NULL,
+    lng         DOUBLE PRECISION NOT NULL,
+    accuracy_m  DOUBLE PRECISION,          -- GPS accuracy in meters
+    recorded_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Participants can send messages (sender_id must match auth user)
-CREATE POLICY messages_insert_participant ON messages FOR INSERT
-WITH CHECK (
-  sender_id = auth.uid()
-  AND booking_id IN (
-    SELECT id FROM bookings
-    WHERE owner_id = auth.uid()
-    OR walker_id IN (SELECT id FROM walkers WHERE user_id = auth.uid())
-  )
-);
+-- Indexes for efficient queries
+CREATE INDEX idx_walk_locations_booking_id ON public.walk_locations(booking_id);
+CREATE INDEX idx_walk_locations_recorded_at ON public.walk_locations(recorded_at);
 ```
+
+**RLS Policies** (from `013_rls_bookings_locations.sql`):
+- **INSERT:** Only the walker assigned to the booking can insert GPS points (joins through `bookings → walkers → user_id`)
+- **SELECT:** Both booking participants (owner and walker) can read GPS points
+
+### messages (Chat Messages)
+
+**Migration:** `supabase/migrations/007_messages.sql`
+
+```sql
+CREATE TABLE public.messages (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    booking_id UUID NOT NULL REFERENCES public.bookings(id) ON DELETE CASCADE,
+    sender_id  UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    content    TEXT,                        -- NULL for media-only messages
+    media_url  TEXT,                        -- Supabase Storage URL
+    media_type TEXT CHECK (media_type IN ('image', 'video', 'status_update')),
+    is_read    BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_messages_booking_id ON public.messages(booking_id);
+```
+
+**RLS Policies** (from `014_rls_messages_reviews_payments_claims.sql`):
+- **SELECT:** Both booking participants can read messages
+- **INSERT:** Only booking participants can insert (with `sender_id = auth.uid()`)
+- **UPDATE:** Both participants can update (e.g., mark as read)
+
+### bookings (Walk Lifecycle)
+
+The `bookings` table drives the walk lifecycle. GPS tracking starts when `status = 'walk_started'` and stops when `status = 'walk_completed'`.
+
+```sql
+-- Relevant status values for GPS/Chat:
+-- 'confirmed'     → Walker can start the walk
+-- 'walk_started'  → GPS broadcasting begins, chat is active
+-- 'walk_completed'→ GPS stops, chat becomes read-only
+```
+
+### Supabase Realtime Configuration
+
+Both `walk_locations` and `messages` tables have **Realtime enabled** via the Supabase dashboard/configuration. The Realtime server listens for Postgres WAL changes and broadcasts them to connected WebSocket clients.
+
+**Channel naming convention:**
+- GPS: `walk_locations_{booking_id}`
+- Chat: `messages:{booking_id}`
+- Booking status: `booking_status_{booking_id}`
 
 ---
 
-## 5. Production Architecture
+## Production Architecture
 
 ```mermaid
 graph TB
-    subgraph "Production Environment"
-        subgraph "Walker Device"
-            WD[Flutter App]
-            WG[GPS Hardware]
-            WC[Camera]
-        end
-
-        subgraph "Supabase Cloud"
-            LB[Load Balancer / Kong API Gateway]
-            AUTH[GoTrue Auth Service]
-            PG[(PostgreSQL + PostGIS)]
-            REAL[Realtime Server - Elixir]
-            STORE[S3-compatible Storage]
-            EDGE[Deno Edge Functions]
-        end
-
-        subgraph "Owner Device"
-            OD[Flutter App]
-            GMAP[Google Maps SDK]
-        end
-
-        subgraph "External Services"
-            FCM[Firebase Cloud Messaging]
-            RC[RevenueCat]
-            PH[PostHog Analytics]
-        end
+    subgraph "Walker Device"
+        WF[Flutter App]
+        WGPS[Geolocator Package]
+        WCAM[image_picker Package]
+        WBG[Background Location Service]
     end
 
-    WG -->|Coordinates| WD
-    WD -->|HTTPS REST| LB
-    LB --> AUTH
-    LB --> PG
-    LB --> EDGE
-    EDGE --> STORE
-    PG --> REAL
-    REAL -->|WSS WebSocket| OD
-    REAL -->|WSS WebSocket| WD
-    OD --> GMAP
-    EDGE --> FCM
-    WD --> RC
-    OD --> RC
-    WD --> PH
-    OD --> PH
+    subgraph "Owner Device"
+        OF[Flutter App]
+        OMAP[Google Maps Flutter]
+        OCHAT[Chat Screen]
+        ONOT[Push Notifications]
+    end
+
+    subgraph "Supabase Cloud"
+        KONG[Kong API Gateway]
+        AUTH[GoTrue Auth]
+        REST[PostgREST API]
+        REALTIME[Realtime Server<br/>WebSocket]
+        STORAGE[Storage API<br/>S3-compatible]
+        PG[(PostgreSQL + PostGIS)]
+        EDGE[Edge Functions<br/>Deno Runtime]
+    end
+
+    subgraph "External Services"
+        FCM[Firebase Cloud Messaging]
+        RC[RevenueCat]
+        PH[PostHog Analytics]
+        GM[Google Maps Platform]
+    end
+
+    WF <-->|HTTPS/WSS| KONG
+    OF <-->|HTTPS/WSS| KONG
+
+    KONG --> AUTH
+    KONG --> REST
+    KONG --> REALTIME
+    KONG --> STORAGE
+    KONG --> EDGE
+
+    REST <--> PG
+    REALTIME <--> PG
+    EDGE <--> PG
+    EDGE <--> STORAGE
+
+    EDGE -->|Push| FCM
+    FCM -->|Notification| ONOT
+    WF --> PH
+    OF --> PH
+    OF --> GM
+
+    WGPS -->|GPS coords| WF
+    WF -->|INSERT| REST
+    REST -->|Write| PG
+    PG -->|WAL changes| REALTIME
+    REALTIME -->|WebSocket push| OF
+
+    style PG fill:#336791,color:#fff
+    style REALTIME fill:#3ECF8E,color:#fff
+    style KONG fill:#003459,color:#fff
 ```
 
-### Production vs Development Differences
+### Data Flow Summary
 
-| Aspect | Development | Production |
-|--------|------------|------------|
-| Supabase | Local Docker stack (`docker-compose.yml`) | Supabase Cloud project |
-| Database | Local PostgreSQL in Docker | Supabase managed Postgres |
-| Realtime | Local Realtime container | Supabase managed Realtime (global) |
-| Storage | Local MinIO-compatible | Supabase S3 storage |
-| Auth | Local GoTrue | Supabase Auth (with email/SMS providers) |
-| Maps API | Google Maps test key | Google Maps production key (billing enabled) |
-| GPS | Physical device or simulator | Physical device only |
-| Network | `localhost:8000` (Kong gateway) | `https://<project>.supabase.co` |
+| Data | Writer | Table | Transport | Reader | Latency |
+|------|--------|-------|-----------|--------|---------|
+| GPS coordinates | Walker app | `walk_locations` | Realtime INSERT | Owner app | ~1-3s |
+| Text messages | Either party | `messages` | Realtime INSERT | Other party | ~1-2s |
+| Photo messages | Walker app | `messages` (via Edge Function) | Realtime INSERT | Owner app | ~3-5s (upload + broadcast) |
+| Status updates | Walker app | `messages` | Realtime INSERT | Owner app | ~1-2s |
+| Walk status | Edge Functions | `bookings` | Realtime UPDATE | Both apps | ~1-2s |
+
+### Resilience & Fallbacks
+
+- **RealtimeManager** (`lib/services/realtime_manager.dart`) auto-reconnects channels on disconnect and falls back to REST polling every 10 seconds
+- **withRetry()** wraps all Supabase REST calls with 3x exponential backoff (1s, 2s, 4s) on network errors
+- **GPS resume on restart** — `GpsBroadcastService.resumeIfActiveWalk()` is called on app startup to recover from crashes/restarts
+- **GPS signal lost detection** — 30-second timeout shows warning to owner, last known position remains visible
 
 ---
 
-## 6. Testing Guide: How to Test with Physical Devices
+## Testing Guide
 
-### Option A: Two Physical Devices (Recommended for GPS)
+### Option 1: Two Physical Devices (Recommended)
 
-This is the most realistic test scenario since GPS requires actual hardware.
+This is the most realistic test. You need two phones — one acts as the walker, the other as the pet owner.
+
+**Prerequisites:**
+- Both devices on the same Wi-Fi network (for local Supabase) OR using production Supabase
+- Google Maps API key configured in both devices' native config
+- Two separate Supabase user accounts (one owner, one walker)
 
 **Setup:**
 
-1. **Device 1 (Walker)** - Any iOS/Android phone with GPS
-2. **Device 2 (Owner)** - Any iOS/Android phone or tablet
-
-**Steps:**
-
-1. **Start the Supabase local stack:**
+1. **Start Supabase locally** (if testing locally):
    ```bash
    cd /Users/dabenson/Documents/myApps/Pawgo-api
-   cp .env.example .env  # if not done already
+   cp .env.example .env  # if not already done
    docker-compose up -d
    ```
 
-2. **Configure Flutter to point to your local machine:**
-   Edit `lib/config/env.dart` and set the local Supabase URL to your machine's **local network IP** (not `localhost`):
-   ```dart
-   static const local = Env(
-     supabaseUrl: 'http://192.168.X.X:8000',  // Your machine's LAN IP
-     supabaseAnonKey: '...',
-   );
+2. **Configure Flutter for local dev:**
+   - In `lib/config/env.dart`, set `Env.local` with your machine's LAN IP (e.g., `http://192.168.1.100:8000`) instead of `localhost` — physical devices can't reach `localhost` on your Mac
+   - Set the env to `Env.local` in `main.dart`
+
+3. **Create test accounts:**
+   - Sign up as **Owner A** on Device 1
+   - Sign up as **Walker B** on Device 2
+   - Enable Walker B via the `enable-walker` Edge Function (or directly in DB)
+
+4. **Create a booking:**
+   - On Device 1 (Owner): Browse walkers → Select Walker B → Book a walk → Complete payment
+
+5. **Start the walk:**
+   - On Device 2 (Walker): Go to Walker Sessions → Find the confirmed booking → Tap "Start Walk"
+   - GPS broadcasting begins automatically
+
+6. **Verify GPS tracking:**
+   - On Device 1 (Owner): Go to Bookings → Tap the active booking → Active Walk screen opens
+   - You should see the walker's location marker moving on the map
+   - The blue polyline traces the walker's route
+   - Stats update (time, distance, GPS points)
+
+7. **Verify chat:**
+   - On either device: Tap the chat button on the Active Walk screen
+   - Send text messages — they should appear on the other device within 1-2 seconds
+   - Walker can send status updates (pee/poop/water) — rendered as colored pills on both devices
+   - Walker can send photos — uploaded to storage, rendered as thumbnails
+
+8. **End the walk:**
+   - On Device 2 (Walker): Tap "End Walk" on the Walker Sessions screen
+   - GPS broadcasting stops
+   - Owner gets redirected to the review screen
+
+### Option 2: Simulator + Physical Device
+
+Use a physical device as the walker (real GPS) and an iOS Simulator or Android Emulator as the owner.
+
+**Key difference:** The simulator/emulator doesn't need real GPS since it's only receiving data.
+
+1. **Physical device (Walker):**
+   - Install the app via `flutter run -d <device-id>`
+   - This device provides real GPS coordinates
+   - Walk around to generate real location data
+
+2. **Simulator/Emulator (Owner):**
+   - Run `flutter run -d <simulator-id>` (e.g., `iPhone 16 Pro`)
+   - The simulator receives GPS data via Supabase Realtime — no GPS sensor needed
+   - Google Maps renders the walker's movement on the map
+
+**Finding device IDs:**
+```bash
+flutter devices
+```
+
+**Running on specific devices simultaneously:**
+```bash
+# Terminal 1: Walker on physical device
+flutter run -d <physical-device-id>
+
+# Terminal 2: Owner on simulator
+flutter run -d <simulator-id>
+```
+
+### Option 3: Two Simulators with Simulated GPS
+
+For pure desktop testing without physical devices.
+
+1. **iOS Simulator GPS Simulation:**
+   - In Xcode > Simulator menu > Features > Location > Custom Location
+   - Or use a GPX file: Xcode > Debug > Simulate Location > Add GPX File
+   - Create a GPX file with a walking route for the walker simulator
+
+2. **Android Emulator GPS Simulation:**
+   - Extended Controls (three dots) > Location
+   - Set coordinates manually or load a GPX/KML route file
+   - Use "Route" playback to simulate movement
+
+**Example GPX file for walker simulation (Mexico City park walk):**
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1">
+  <trk>
+    <name>Park Walk</name>
+    <trkseg>
+      <trkpt lat="19.4195" lon="-99.1826"><time>2026-01-01T12:00:00Z</time></trkpt>
+      <trkpt lat="19.4198" lon="-99.1823"><time>2026-01-01T12:00:05Z</time></trkpt>
+      <trkpt lat="19.4201" lon="-99.1820"><time>2026-01-01T12:00:10Z</time></trkpt>
+      <trkpt lat="19.4204" lon="-99.1817"><time>2026-01-01T12:00:15Z</time></trkpt>
+      <trkpt lat="19.4207" lon="-99.1814"><time>2026-01-01T12:00:20Z</time></trkpt>
+      <trkpt lat="19.4210" lon="-99.1811"><time>2026-01-01T12:00:25Z</time></trkpt>
+    </trkseg>
+  </trk>
+</gpx>
+```
+
+### How the Walker Broadcasts GPS to the Owner
+
+Here is exactly what happens under the hood:
+
+1. **Walker taps "Start Walk"** on the Walker Sessions screen
+2. The app calls the `start-walk` Edge Function, which sets `booking.status = 'walk_started'`
+3. The `ActiveWalkScreen` detects `status == 'walk_started'` and the current user is the walker
+4. It calls `GpsBroadcastService.instance.startBroadcasting(bookingId)`
+5. The service:
+   - Checks/requests location permissions via `Geolocator`
+   - Immediately captures and sends the first position
+   - Starts a `Timer.periodic(Duration(seconds: 5), callback)`
+6. Every 5 seconds, the timer fires:
+   - `Geolocator.getCurrentPosition()` gets the device GPS coordinates
+   - The service does `Supabase.instance.client.from('walk_locations').insert({...})`
+7. Supabase Realtime detects the INSERT via PostgreSQL WAL
+8. The owner's app, which subscribed to `walk_locations` changes filtered by `booking_id`, receives the new row via WebSocket
+9. The `ActiveWalkScreen` adds the new `LatLng` to the route polyline, updates the walker marker, and animates the camera
+
+**The entire round trip (GPS capture → map update) typically takes 1-3 seconds.**
+
+### Verifying Realtime Is Working
+
+To confirm Supabase Realtime is properly configured:
+
+1. Check the Supabase Dashboard > Database > Replication
+2. Ensure both `walk_locations` and `messages` tables are in the publication
+3. In the app, check debug console for:
    ```
-   Find your IP: `ifconfig | grep "inet " | grep -v 127.0.0.1`
-
-3. **Create two test accounts:**
-   - Account A: Pet owner (sign up with email)
-   - Account B: Walker (sign up with email, then enable as walker via admin Edge Function or direct DB insert)
-
-4. **Create test data:**
-   ```sql
-   -- In Supabase Studio (http://localhost:3000) or psql:
-   -- 1. Add a walker profile for Account B
-   INSERT INTO walkers (user_id, bio, hourly_rate_mxn, is_enabled, background_checked)
-   VALUES ('<account-b-user-id>', 'Test walker', 150.00, true, true);
-
-   -- 2. Add a dog for Account A
-   INSERT INTO dogs (owner_id, name, breed, weight_kg)
-   VALUES ('<account-a-user-id>', 'Buddy', 'Labrador', 25.0);
+   GPS broadcast started for booking: <booking-id>
    ```
+4. On the owner's device, the LIVE badge should show a red dot (green if signal is active)
+5. If Realtime fails, the `RealtimeManager` will fall back to REST polling every 10 seconds
 
-5. **Run the app on both devices:**
-   ```bash
-   # Terminal 1 - Walker device
-   flutter run -d <walker-device-id>
+### Troubleshooting
 
-   # Terminal 2 - Owner device
-   flutter run -d <owner-device-id>
-   ```
-   List devices: `flutter devices`
-
-6. **Test the full flow:**
-   - **Owner (Device 2):** Create a booking for the walker
-   - **Walker (Device 1):** Go to Walker Sessions, tap "Start Walk"
-   - **Owner (Device 2):** Open the active walk screen - you should see the map
-   - **Walker (Device 1):** Walk around outside - GPS points appear every 5s
-   - **Owner (Device 2):** Watch the map update in real-time with the walker's route
-   - **Both:** Open the chat, exchange messages and photos
-   - **Walker (Device 1):** Tap "End Walk" to complete
-
-### Option B: One Physical Device + One Simulator
-
-**Limitation:** iOS Simulator provides fake GPS (Apple HQ by default). Android Emulator can simulate GPS routes.
-
-**Setup:**
-
-1. **Physical device** = Walker (needs real GPS)
-2. **Simulator/Emulator** = Owner (only needs to receive data and display map)
-
-**For Android Emulator GPS simulation:**
-- Open Extended Controls (three dots on emulator toolbar)
-- Go to Location tab
-- Set coordinates manually or load a GPX route file
-- Click "Send" to simulate movement
-
-**For iOS Simulator:**
-- Features > Location > Custom Location (set lat/lng)
-- Or use "City Run" / "Freeway Drive" presets for moving simulation
-
-**Steps:**
-
-1. Same Supabase setup as Option A
-2. Set `supabaseUrl` to `http://10.0.2.2:8000` for Android Emulator (special alias for host machine), or your LAN IP for iOS Simulator
-3. Run walker app on physical device, owner app on simulator
-4. Follow the same test flow as Option A
-
-### Option C: Single Device (Limited Testing)
-
-For quick development iteration without full end-to-end GPS testing:
-
-1. **Run the app on one device/simulator**
-2. **Manually insert GPS points** via SQL to simulate the walker:
-   ```sql
-   -- Simulate walker GPS broadcast
-   INSERT INTO walk_locations (booking_id, lat, lng, accuracy_m)
-   VALUES
-     ('<booking-id>', 19.4326, -99.1332, 10.0);  -- Mexico City
-
-   -- Wait 5 seconds, insert next point
-   INSERT INTO walk_locations (booking_id, lat, lng, accuracy_m)
-   VALUES
-     ('<booking-id>', 19.4327, -99.1330, 10.0);  -- Slightly moved
-   ```
-3. **Watch the owner's map update** as each INSERT triggers Realtime
-
-### How the Walker Broadcasts GPS to the App
-
-The GPS broadcast flow works as follows:
-
-1. **Permission request** - On first walk start, the app requests location permissions via the `geolocator` Flutter package
-2. **`GpsBroadcastService` singleton** - Lives for the lifetime of the app process, independent of screen navigation
-3. **Timer.periodic(5 seconds)** - Every 5 seconds, calls `Geolocator.getCurrentPosition()` with high accuracy
-4. **Supabase INSERT** - Each position is inserted into `walk_locations` table via the Supabase Dart client (REST API with JWT auth)
-5. **RLS enforcement** - The INSERT only succeeds if the authenticated user is the assigned walker for that booking
-6. **Realtime broadcast** - Supabase Realtime detects the INSERT via Postgres logical replication and pushes the new row to all subscribed clients (the pet owner)
-7. **Map update** - The owner's `ActiveWalkScreen` receives the WebSocket event, adds the point to the polyline, and updates the walker marker position
-
-**Key detail:** The broadcast service is a **singleton** that persists even if the walker navigates away from the active walk screen. This means GPS keeps sending even if the walker is in the chat screen, settings, etc. The service is only stopped when the walk ends or the app is killed.
-
-**Background GPS (iOS/Android):**
-- iOS: `UIBackgroundModes` includes `location` in `Info.plist` - allows GPS capture when app is backgrounded
-- Android: `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_LOCATION` permissions in `AndroidManifest.xml` - requires a foreground notification (planned enhancement)
-
----
-
-## 7. Data Retention and Performance
-
-### GPS Data Volume Estimate
-
-- 1 point every 5 seconds = 12 points/minute = 720 points/hour
-- Average walk: 30-60 minutes = 360-720 points per walk
-- Each row: ~100 bytes = ~72 KB per walk
-- `BIGSERIAL` PK used (not UUID) for efficient time-series storage
-
-### Chat Message Volume
-
-- Typical walk: 5-20 messages
-- Photo messages: stored in Supabase Storage, only URL in DB
-- Status updates: lightweight text messages
-
-### Indexes
-
-- `walk_locations(booking_id)` - Fast lookup of all GPS points for a walk
-- `walk_locations(recorded_at)` - Time-range queries
-- `messages(booking_id)` - Fast lookup of all messages for a walk
-
----
-
-## 8. Security Considerations
-
-1. **RLS everywhere** - All tables have Row Level Security enabled. Only walk participants can read/write their own data.
-2. **Walker identification** - GPS INSERT requires JOIN through `walkers` table to verify the authenticated user is the assigned walker (not just any user).
-3. **Media upload validation** - Edge Function validates file type (image/video only) and size (50MB max) before storage.
-4. **Chat availability** - Chat should only be active during `walk_started` status (enforced in UI, can be reinforced in RLS).
-5. **JWT auth** - All Supabase client operations use JWT tokens. Realtime WebSocket connections are authenticated.
-
----
-
-## 9. Mapping to PRD User Stories
-
-| Story | What Exists | What May Need Enhancement |
-|-------|-------------|--------------------------|
-| US-002 (GPS schema) | `walk_locations` table exists with proper schema | Already complete - uses `booking_id` as walk identifier |
-| US-003 (Chat schema) | `messages` table exists with proper schema | May need sender_role column for owner/walker distinction |
-| US-004 (Walker GPS broadcast) | `GpsBroadcastService` fully implemented | Already complete |
-| US-005 (Owner Realtime GPS) | `ActiveWalkScreen` Realtime subscription exists | Already complete |
-| US-006 (Map rendering) | Google Maps with polyline + markers implemented | Already complete |
-| US-007 (Chat UI) | `WalkerChatScreen` with full chat UI exists | Already complete |
-| US-008 (Photo messages) | Media upload via Edge Function + display implemented | Already complete |
-| US-009 (Quick status) | Status updates with pill badge rendering exist | May need more predefined options |
-| US-010 (Chat only during active) | UI shows chat button only during active walks | May need RLS enforcement |
-| US-011 (Tests) | No dedicated tests for GPS/chat yet | Needs implementation |
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| No GPS points appearing | Location permission denied | Check device settings, re-request permission |
+| Map shows "SIGNAL LOST" | Walker's GPS not sending | Check walker's debug logs for broadcast errors |
+| Chat messages delayed | Realtime disconnected | RealtimeManager should auto-reconnect; check network |
+| Photos not sending | Storage bucket not configured | Ensure `walk-media` bucket exists in Supabase Storage |
+| Walker marker not moving | Realtime not enabled on table | Check Supabase Dashboard > Replication settings |
+| `localhost` not reachable | Physical device can't reach Mac | Use LAN IP address in `Env.local` config |
