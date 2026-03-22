@@ -14,6 +14,21 @@ class GpsBroadcastService {
   bool _isBroadcasting = false;
   Position? _lastPosition;
 
+  /// Injected client for testing. Falls back to Supabase.instance.client.
+  @visibleForTesting
+  SupabaseClient? testClient;
+
+  SupabaseClient get _client => testClient ?? Supabase.instance.client;
+
+  /// Reset all state for testing.
+  @visibleForTesting
+  void resetForTesting() {
+    stopBroadcasting();
+    _lastPosition = null;
+    positionNotifier.value = null;
+    testClient = null;
+  }
+
   /// Whether GPS broadcasting is currently active.
   bool get isBroadcasting => _isBroadcasting;
 
@@ -67,11 +82,11 @@ class GpsBroadcastService {
   /// Checks if there's an active walk for the current walker and resumes.
   Future<bool> resumeIfActiveWalk() async {
     try {
-      final userId = Supabase.instance.client.auth.currentUser?.id;
+      final userId = _client.auth.currentUser?.id;
       if (userId == null) return false;
 
       // Find walker profile
-      final walkerData = await Supabase.instance.client
+      final walkerData = await _client
           .from('walkers')
           .select('id')
           .eq('user_id', userId)
@@ -81,7 +96,7 @@ class GpsBroadcastService {
       final walkerId = walkerData['id'] as String;
 
       // Find active booking (walk_started status)
-      final booking = await Supabase.instance.client
+      final booking = await _client
           .from('bookings')
           .select('id')
           .eq('walker_id', walkerId)
@@ -94,7 +109,7 @@ class GpsBroadcastService {
       debugPrint('Resuming GPS broadcast for booking: $bookingId');
 
       // Load last known position from DB
-      final lastLoc = await Supabase.instance.client
+      final lastLoc = await _client
           .from('walk_locations')
           .select('lat, lng, accuracy_m, recorded_at')
           .eq('booking_id', bookingId)
@@ -152,7 +167,7 @@ class GpsBroadcastService {
       _lastPosition = position;
       positionNotifier.value = position;
 
-      await Supabase.instance.client.from('walk_locations').insert({
+      await _client.from('walk_locations').insert({
         'booking_id': _activeBookingId,
         'lat': position.latitude,
         'lng': position.longitude,
