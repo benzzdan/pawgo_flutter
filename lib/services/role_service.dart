@@ -13,7 +13,11 @@ class RoleService {
   RoleService._();
   static final instance = RoleService._();
 
-  final SupabaseClient _client = Supabase.instance.client;
+  SupabaseClient get _client => _testClient ?? Supabase.instance.client;
+
+  /// Override for testing — set a mock SupabaseClient.
+  set testClient(SupabaseClient? client) => _testClient = client;
+  SupabaseClient? _testClient;
 
   final ValueNotifier<UserRole> role = ValueNotifier(UserRole.owner);
   final ValueNotifier<ActiveRole> activeRole = ValueNotifier(ActiveRole.owner);
@@ -93,5 +97,11 @@ class RoleService {
     activeRole.value = ActiveRole.owner;
     hasPendingApplication.value = false;
     _initialized = false;
+  }
+
+  /// Reset all state for testing. Also clears testClient.
+  void resetForTesting() {
+    reset();
+    _testClient = null;
   }
 }
