@@ -611,20 +611,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildSettingsSection() {
     final items = [
       {
-        'icon': Icons.directions_walk,
-        'color': AppColors.green600,
-        'bgColor': AppColors.green50,
-        'label': 'Walker Sessions',
-        'route': '/walker-bookings',
-      },
-      {
-        'icon': Icons.account_balance_wallet,
-        'color': AppColors.orange500,
-        'bgColor': AppColors.orange50,
-        'label': 'Walker Earnings',
-        'route': '/walker-earnings',
-      },
-      {
         'icon': Icons.notifications,
         'color': AppColors.blue600,
         'bgColor': AppColors.blue50,

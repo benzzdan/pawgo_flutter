@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pawgo/theme/app_theme.dart';
+import 'package:pawgo/services/role_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class TopBar extends StatelessWidget {
@@ -7,59 +8,74 @@ class TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
+    return ValueListenableBuilder<ActiveRole>(
+      valueListenable: RoleService.instance.activeRole,
+      builder: (context, activeRole, _) {
+        final isWalkerMode = activeRole == ActiveRole.walker;
+        final accentColor =
+            isWalkerMode ? AppColors.cacaoBrown : AppColors.orange500;
+        final title = isWalkerMode ? 'Pawgo Walker' : 'Pawgo';
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppColors.orange500,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Center(
-                  child: Text('\u{1F43E}', style: TextStyle(fontSize: 22)),
-                ),
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: accentColor,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Center(
+                      child: Text(
+                        isWalkerMode ? '\u{1F6B6}' : '\u{1F43E}',
+                        style: const TextStyle(fontSize: 22),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    title,
+                    style: GoogleFonts.nunito(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 10),
-              Text(
-                'Pawgo',
-                style: GoogleFonts.nunito(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
+              GestureDetector(
+                onTap: () => Navigator.pushNamed(context, '/profile'),
+                child: Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isWalkerMode
+                        ? AppColors.cacaoBrown.withValues(alpha: 0.12)
+                        : AppColors.orange100,
+                    border: Border.all(color: accentColor, width: 2),
+                  ),
+                  child: Center(
+                    child: Text(
+                      'd',
+                      style: GoogleFonts.nunito(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: accentColor,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
-          GestureDetector(
-            onTap: () => Navigator.pushNamed(context, '/profile'),
-            child: Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.orange100,
-                border: Border.all(color: AppColors.orange500, width: 2),
-              ),
-              child: Center(
-                child: Text(
-                  'd',
-                  style: GoogleFonts.nunito(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.orange500,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
