@@ -13,6 +13,40 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _showAddressForm = false;
+  String? _applicationStatus;
+  bool _applicationLoading = true;
+
+  final _supabase = Supabase.instance.client;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkApplicationStatus();
+  }
+
+  Future<void> _checkApplicationStatus() async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      final rows = await _supabase
+          .from('walker_applications')
+          .select('status')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false)
+          .limit(1);
+
+      if (!mounted) return;
+      setState(() {
+        _applicationStatus =
+            rows.isNotEmpty ? rows[0]['status'] as String? : null;
+        _applicationLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _applicationLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -338,8 +372,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildBecomeWalkerCard() {
+    if (_applicationLoading) {
+      return const SizedBox.shrink();
+    }
+
+    // If user has a pending/in-progress/rejected application, show status card
+    final hasApplication = _applicationStatus != null &&
+        _applicationStatus != 'approved';
+
+    final String title;
+    final String subtitle;
+    final IconData icon;
+    final String route;
+
+    if (hasApplication) {
+      title = 'Application Status';
+      subtitle = _applicationStatus == 'pending'
+          ? 'Your application is under review'
+          : _applicationStatus == 'background_check_in_progress'
+              ? 'Background check in progress'
+              : _applicationStatus == 'rejected'
+                  ? 'View details and re-apply options'
+                  : 'Check your application status';
+      icon = Icons.assignment_outlined;
+      route = '/walker-application-status';
+    } else if (_applicationStatus == 'approved') {
+      // User is already a walker — hide card (role toggle will handle this in US-012)
+      return const SizedBox.shrink();
+    } else {
+      title = 'Become a Walker';
+      subtitle = 'Earn money walking dogs in your neighborhood';
+      icon = Icons.directions_walk;
+      route = '/walker-application';
+    }
+
     return GestureDetector(
-      onTap: () => Navigator.pushNamed(context, '/walker-application'),
+      onTap: () async {
+        await Navigator.pushNamed(context, route);
+        // Refresh status when returning from application or status screen
+        _checkApplicationStatus();
+      },
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -366,8 +438,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 color: Colors.white.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child:
-                  const Icon(Icons.directions_walk, size: 24, color: Colors.white),
+              child: Icon(icon, size: 24, color: Colors.white),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -375,7 +446,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Become a Walker',
+                    title,
                     style: GoogleFonts.nunito(
                       fontSize: 16,
                       fontWeight: FontWeight.w900,
@@ -384,7 +455,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'Earn money walking dogs in your neighborhood',
+                    subtitle,
                     style: GoogleFonts.nunito(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
