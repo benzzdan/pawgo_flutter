@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/models/mock_data.dart';
 import 'package:pawgo/widgets/celebration_overlay.dart';
@@ -14,6 +15,7 @@ class MyDogsScreen extends StatefulWidget {
 
 class _MyDogsScreenState extends State<MyDogsScreen> {
   final List<Dog> _dogs = List.from(MockData.dogs);
+  bool _hasAnimated = false;
 
   Future<void> _addDog() async {
     final dog = await showDialog<Dog>(
@@ -133,19 +135,56 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
               ],
             ),
           ),
-          // Dogs List
-          ..._dogs.map((dog) => Padding(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-                child: _DogCard(
-                  dog: dog,
-                  onDelete: () => _deleteDog(dog),
-                ),
-              )),
-          // Add Dog Card
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-            child: _AddDogCard(onTap: _addDog),
-          ),
+          // Dogs List with staggered entrance animations.
+          ..._dogs.asMap().entries.map((entry) {
+            final index = entry.key;
+            final dog = entry.value;
+            final card = Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+              child: _DogCard(
+                dog: dog,
+                onDelete: () => _deleteDog(dog),
+              ),
+            );
+            if (_hasAnimated) return card;
+            return card
+                .animate()
+                .fadeIn(
+                  duration: 400.ms,
+                  curve: Curves.easeOut,
+                  delay: Duration(milliseconds: index * 100),
+                )
+                .slideY(
+                  begin: 0.08,
+                  end: 0,
+                  duration: 400.ms,
+                  curve: Curves.easeOut,
+                  delay: Duration(milliseconds: index * 100),
+                );
+          }),
+          // Add Dog Card — animates as the last staggered item.
+          Builder(builder: (context) {
+            final card = Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+              child: _AddDogCard(onTap: _addDog),
+            );
+            if (_hasAnimated) return card;
+            _hasAnimated = true;
+            return card
+                .animate()
+                .fadeIn(
+                  duration: 400.ms,
+                  curve: Curves.easeOut,
+                  delay: Duration(milliseconds: _dogs.length * 100),
+                )
+                .slideY(
+                  begin: 0.08,
+                  end: 0,
+                  duration: 400.ms,
+                  curve: Curves.easeOut,
+                  delay: Duration(milliseconds: _dogs.length * 100),
+                );
+          }),
         ],
       ),
     );
