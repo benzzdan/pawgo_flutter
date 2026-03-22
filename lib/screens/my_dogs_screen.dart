@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/models/mock_data.dart';
 import 'package:pawgo/widgets/celebration_overlay.dart';
@@ -261,22 +262,7 @@ class _DogCardState extends State<_DogCard>
                       angle: _idleAnimation.value,
                       child: child,
                     ),
-                    child: Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [AppColors.orange400, AppColors.orange500],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Center(
-                        child: Text(widget.dog.image,
-                            style: const TextStyle(fontSize: 48)),
-                      ),
-                    ),
+                    child: _DogAvatar(dog: widget.dog),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -476,6 +462,80 @@ class _ShakeOnPressButtonState extends State<_ShakeOnPressButton>
         ),
         child: widget.child,
       ),
+    );
+  }
+}
+
+/// Shows the dog's photo if available, otherwise shows the branded SVG
+/// illustration with a warm gradient overlay.
+class _DogAvatar extends StatelessWidget {
+  final Dog dog;
+
+  const _DogAvatar({required this.dog});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: SizedBox(
+        width: 80,
+        height: 80,
+        child: dog.photoUrl != null
+            ? _buildPhotoAvatar()
+            : _buildIllustrationAvatar(),
+      ),
+    );
+  }
+
+  Widget _buildPhotoAvatar() {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      child: Image.network(
+        dog.photoUrl!,
+        key: ValueKey(dog.photoUrl),
+        width: 80,
+        height: 80,
+        fit: BoxFit.cover,
+        errorBuilder: (_, error, stack) => _buildIllustrationAvatar(),
+      ),
+    );
+  }
+
+  Widget _buildIllustrationAvatar() {
+    return Stack(
+      children: [
+        // Warm background.
+        Container(
+          color: const Color(0xFFFFF5E6), // Soft Cream
+        ),
+        // SVG illustration.
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: SvgPicture.asset(
+              'lib/assets/illustrations/dog_sitting.svg',
+              width: 64,
+              height: 64,
+            ),
+          ),
+        ),
+        // Subtle gradient overlay (bottom to top) for warmth.
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: [
+                  const Color(0xFF4A2C2A).withValues(alpha: 0.12),
+                  Colors.transparent,
+                ],
+                stops: const [0.0, 0.4],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
