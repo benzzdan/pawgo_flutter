@@ -135,6 +135,8 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
           setState(() {
             _dogs.add(dog);
           });
+        },
+        onDismiss: () {
           Navigator.of(sheetContext).pop();
         },
       ),
@@ -458,8 +460,9 @@ class _DetailChip extends StatelessWidget {
 /// illustration header, and staggered entrance animations.
 class _AddDogForm extends StatefulWidget {
   final ValueChanged<Dog> onDogAdded;
+  final VoidCallback onDismiss;
 
-  const _AddDogForm({required this.onDogAdded});
+  const _AddDogForm({required this.onDogAdded, required this.onDismiss});
 
   @override
   State<_AddDogForm> createState() => _AddDogFormState();
@@ -475,6 +478,7 @@ class _AddDogFormState extends State<_AddDogForm> {
 
   XFile? _selectedImage;
   bool _isSaving = false;
+  bool _showSuccessCorgi = false;
 
   @override
   void dispose() {
@@ -584,8 +588,16 @@ class _AddDogFormState extends State<_AddDogForm> {
     );
 
     if (mounted) {
-      setState(() => _isSaving = false);
+      setState(() {
+        _isSaving = false;
+        _showSuccessCorgi = true;
+      });
       widget.onDogAdded(dog);
+      // Brief delay to let user see the excited corgi before sheet closes
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (mounted) {
+        widget.onDismiss();
+      }
     }
   }
 
@@ -679,15 +691,38 @@ class _AddDogFormState extends State<_AddDogForm> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Corgi illustration header with fadeIn + scaleUp entrance
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Image.asset(
-              'assets/illustrations/corgi_sitting.png',
-              height: 100,
-              fit: BoxFit.contain,
+          // Corgi illustration header — swaps to excited corgi on success
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            switchInCurve: Curves.easeOut,
+            child: ClipRRect(
+              key: ValueKey<bool>(_showSuccessCorgi),
+              borderRadius: BorderRadius.circular(16),
+              child: Image.asset(
+                _showSuccessCorgi
+                    ? 'assets/illustrations/corgi_wagging.png'
+                    : 'assets/illustrations/corgi_sitting.png',
+                height: 100,
+                fit: BoxFit.contain,
+              ),
             ),
           )
+              .animate(
+                target: _showSuccessCorgi ? 1.0 : 0.0,
+              )
+              .scale(
+                begin: const Offset(1.0, 1.0),
+                end: const Offset(1.1, 1.1),
+                duration: 200.ms,
+                curve: Curves.easeOut,
+              )
+              .then()
+              .scale(
+                begin: const Offset(1.1, 1.1),
+                end: const Offset(1.0, 1.0),
+                duration: 200.ms,
+                curve: Curves.elasticOut,
+              )
               .animate()
               .fadeIn(duration: 300.ms, curve: Curves.easeOut)
               .scale(
