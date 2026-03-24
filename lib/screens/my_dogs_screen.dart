@@ -21,6 +21,111 @@ class MyDogsScreen extends StatefulWidget {
 class _MyDogsScreenState extends State<MyDogsScreen> {
   final List<Dog> _dogs = List.from(MockData.dogs);
 
+  void _showDeleteConfirmation(Dog dog, int index) {
+    PawgoBottomSheet.show(
+      context: context,
+      builder: (sheetContext) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 8),
+          // Dog photo
+          if (dog.photoUrl != null && dog.photoUrl!.isNotEmpty)
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: const Color(0xFFEF4444).withValues(alpha: 0.3),
+                  width: 2,
+                ),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Image.network(
+                dog.photoUrl!,
+                width: 80,
+                height: 80,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [AppColors.orange50, AppColors.orange100],
+                    ),
+                  ),
+                  child: const Center(
+                    child: Icon(Icons.pets, color: AppColors.orange500, size: 32),
+                  ),
+                ),
+              ),
+            )
+          else
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AppColors.orange50, AppColors.orange100],
+                ),
+              ),
+              child: const Center(
+                child: Icon(Icons.pets, color: AppColors.orange500, size: 32),
+              ),
+            ),
+          const SizedBox(height: 16),
+          // Title
+          Text(
+            'Remove ${dog.name}?',
+            style: GoogleFonts.nunito(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'This will remove ${dog.name} from your dogs list. This action cannot be undone.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.nunito(
+              fontSize: 14,
+              fontWeight: FontWeight.w400,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 24),
+          // Remove Dog button (destructive)
+          PawgoButton(
+            label: 'Remove Dog',
+            variant: PawgoButtonVariant.destructive,
+            icon: Icons.delete_outline,
+            onPressed: () {
+              Navigator.of(sheetContext).pop();
+              setState(() {
+                _dogs.removeAt(index);
+              });
+            },
+          ),
+          const SizedBox(height: 8),
+          // Cancel as text button
+          PawgoButton(
+            label: 'Cancel',
+            variant: PawgoButtonVariant.text,
+            onPressed: () {
+              Navigator.of(sheetContext).pop();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showAddDogSheet() {
     PawgoBottomSheet.show(
       context: context,
@@ -80,9 +185,7 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
                   // TODO: edit dog
                 },
                 onDelete: () {
-                  setState(() {
-                    _dogs.removeAt(index);
-                  });
+                  _showDeleteConfirmation(dog, index);
                 },
               ),
             )
