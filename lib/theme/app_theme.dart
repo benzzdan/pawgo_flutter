@@ -281,5 +281,47 @@ class AppTheme {
           selectedItemColor: AppColors.orange500,
           unselectedItemColor: AppColors.textTertiary,
         ),
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: PawgoPageTransitionsBuilder(),
+            TargetPlatform.iOS: PawgoPageTransitionsBuilder(),
+            TargetPlatform.macOS: PawgoPageTransitionsBuilder(),
+            TargetPlatform.windows: PawgoPageTransitionsBuilder(),
+            TargetPlatform.linux: PawgoPageTransitionsBuilder(),
+          },
+        ),
       );
+}
+
+/// Custom page transition: fadeIn + slideUp on push, fadeOut + slideDown on pop.
+class PawgoPageTransitionsBuilder extends PageTransitionsBuilder {
+  const PawgoPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final reduceMotion = MediaQuery.of(context).accessibleNavigation;
+    if (reduceMotion) return child;
+
+    // Push: fadeIn + slideUp (16px offset, 300ms easeOut)
+    final slideTween = Tween<Offset>(
+      begin: const Offset(0, 0.02), // ~16px relative offset
+      end: Offset.zero,
+    ).chain(CurveTween(curve: Curves.easeOut));
+
+    final fadeTween = CurveTween(curve: Curves.easeOut);
+
+    return SlideTransition(
+      position: animation.drive(slideTween),
+      child: FadeTransition(
+        opacity: animation.drive(fadeTween),
+        child: child,
+      ),
+    );
+  }
 }
