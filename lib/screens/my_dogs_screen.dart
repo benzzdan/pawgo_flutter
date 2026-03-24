@@ -141,8 +141,83 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
     );
   }
 
+  Widget _buildEmptyState(BuildContext context) {
+    final reduceMotion = MediaQuery.of(context).accessibleNavigation;
+
+    Widget illustration = ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Image.asset(
+        'assets/illustrations/corgi_lying.png',
+        width: 150,
+        fit: BoxFit.contain,
+      ),
+    );
+
+    // Subtle floating idle animation (2px, 3s loop) unless reduce-motion
+    if (!reduceMotion) {
+      illustration = illustration
+          .animate(onPlay: (controller) => controller.repeat(reverse: true))
+          .moveY(begin: 0, end: -2, duration: 3000.ms, curve: Curves.easeInOut);
+    }
+
+    Widget content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(height: 60),
+          illustration,
+          const SizedBox(height: 24),
+          Text(
+            'No pups yet',
+            style: GoogleFonts.nunito(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Add your first furry friend to get started',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.nunito(
+              fontSize: 14,
+              fontWeight: FontWeight.w400,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 32),
+          PawgoButton(
+            label: 'Add a Dog',
+            icon: Icons.add,
+            onPressed: _showAddDogSheet,
+          ),
+        ],
+      ),
+    );
+
+    // FadeIn + scaleUp entrance animation unless reduce-motion
+    if (!reduceMotion) {
+      content = content
+          .animate()
+          .fadeIn(duration: 400.ms, curve: Curves.easeOut)
+          .scale(
+            begin: const Offset(0.95, 0.95),
+            end: const Offset(1.0, 1.0),
+            duration: 400.ms,
+            curve: Curves.easeOut,
+          );
+    }
+
+    return content;
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_dogs.isEmpty) {
+      return _buildEmptyState(context);
+    }
+
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
