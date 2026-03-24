@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:pawgo/theme/app_theme.dart';
-import 'package:pawgo/models/mock_data.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:pawgo/models/mock_data.dart';
+import 'package:pawgo/theme/app_theme.dart';
 
 class BookingsScreen extends StatefulWidget {
   const BookingsScreen({super.key});
@@ -13,8 +14,77 @@ class BookingsScreen extends StatefulWidget {
 class _BookingsScreenState extends State<BookingsScreen> {
   String _selectedTab = 'upcoming';
 
+  Widget _buildEmptyState(BuildContext context) {
+    final reduceMotion = MediaQuery.of(context).accessibleNavigation;
+
+    Widget illustration = ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Image.asset(
+        'assets/illustrations/corgi_sitting.png',
+        width: 150,
+        fit: BoxFit.contain,
+      ),
+    );
+
+    // Subtle floating idle animation (2px, 3s loop) unless reduce-motion
+    if (!reduceMotion) {
+      illustration = illustration
+          .animate(onPlay: (controller) => controller.repeat(reverse: true))
+          .moveY(
+              begin: 0, end: -2, duration: 3000.ms, curve: Curves.easeInOut);
+    }
+
+    Widget content = Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            illustration,
+            const SizedBox(height: 24),
+            Text(
+              'No walks planned',
+              style: GoogleFonts.nunito(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Book a walk and your pup will thank you',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.nunito(
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    // FadeIn + scaleUp entrance animation unless reduce-motion
+    if (!reduceMotion) {
+      content = content
+          .animate()
+          .fadeIn(duration: 400.ms, curve: Curves.easeOut)
+          .scale(
+            begin: const Offset(0.95, 0.95),
+            end: const Offset(1.0, 1.0),
+            duration: 400.ms,
+            curve: Curves.easeOut,
+          );
+    }
+
+    return content;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bookings = MockData.bookings;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -71,17 +141,19 @@ class _BookingsScreenState extends State<BookingsScreen> {
           ),
         ),
         const SizedBox(height: 20),
-        // Bookings List
+        // Bookings List or Empty State
         Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-            itemCount: MockData.bookings.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 16),
-            itemBuilder: (context, index) {
-              final booking = MockData.bookings[index];
-              return _BookingCard(booking: booking);
-            },
-          ),
+          child: bookings.isEmpty
+              ? _buildEmptyState(context)
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                  itemCount: bookings.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 16),
+                  itemBuilder: (context, index) {
+                    final booking = bookings[index];
+                    return _BookingCard(booking: booking);
+                  },
+                ),
         ),
       ],
     );
