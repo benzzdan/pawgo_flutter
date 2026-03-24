@@ -203,10 +203,15 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
                   curve: Curves.easeOut,
                 );
           }),
-          // Add Dog Card
+          // Add Dog Button
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-            child: _AddDogCard(onTap: _showAddDogSheet),
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+            child: PawgoButton(
+              label: 'Add a Dog',
+              icon: Icons.add,
+              variant: PawgoButtonVariant.secondary,
+              onPressed: _showAddDogSheet,
+            ),
           ),
         ],
       ),
@@ -373,59 +378,6 @@ class _DetailChip extends StatelessWidget {
 }
 
 
-class _AddDogCard extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _AddDogCard({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 20),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.borderDashed, width: 2),
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: AppColors.orange100,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child:
-                  const Icon(Icons.add, color: AppColors.orange500, size: 32),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Add a Dog',
-              style: GoogleFonts.nunito(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Register a new furry friend',
-              style: GoogleFonts.nunito(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textTertiary,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 /// Bottom-sheet form for adding a new dog, with photo picker, corgi
 /// illustration header, and staggered entrance animations.
