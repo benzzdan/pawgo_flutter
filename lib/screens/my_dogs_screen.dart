@@ -1,6 +1,11 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/models/mock_data.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/widgets/pawgo_bottom_sheet.dart';
@@ -292,8 +297,8 @@ class _AddDogCard extends StatelessWidget {
   }
 }
 
-/// Bottom-sheet form for adding a new dog, with corgi illustration header
-/// and staggered entrance animations.
+/// Bottom-sheet form for adding a new dog, with photo picker, corgi
+/// illustration header, and staggered entrance animations.
 class _AddDogForm extends StatefulWidget {
   final ValueChanged<Dog> onDogAdded;
 
@@ -309,6 +314,10 @@ class _AddDogFormState extends State<_AddDogForm> {
   final _breedController = TextEditingController();
   final _ageController = TextEditingController();
   final _weightController = TextEditingController();
+  final _picker = ImagePicker();
+
+  XFile? _selectedImage;
+  bool _isSaving = false;
 
   @override
   void dispose() {
@@ -319,11 +328,90 @@ class _AddDogFormState extends State<_AddDogForm> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _pickImage() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: Text('Gallery',
+                  style: GoogleFonts.nunito(fontWeight: FontWeight.w600)),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: Text('Camera',
+                  style: GoogleFonts.nunito(fontWeight: FontWeight.w600)),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+
+    final picked = await _picker.pickImage(
+      source: source,
+      maxWidth: 800,
+      imageQuality: 80,
+    );
+    if (picked != null) {
+      setState(() => _selectedImage = picked);
+    }
+  }
+
+  Future<String?> _uploadPhoto(int dogId) async {
+    if (_selectedImage == null) return null;
+
+    final supabase = Supabase.instance.client;
+    final userId = supabase.auth.currentUser?.id ?? 'anonymous';
+    final filePath = '$userId/$dogId.jpg';
+
+    try {
+      final bytes = await _selectedImage!.readAsBytes();
+      await supabase.storage.from('dog-photos').uploadBinary(
+            filePath,
+            bytes,
+            fileOptions: const FileOptions(
+              contentType: 'image/jpeg',
+              upsert: true,
+            ),
+          );
+      final publicUrl =
+          supabase.storage.from('dog-photos').getPublicUrl(filePath);
+      return publicUrl;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
+    setState(() => _isSaving = true);
+
+    final dogId = DateTime.now().millisecondsSinceEpoch;
+    String? photoUrl;
+
+    if (_selectedImage != null) {
+      photoUrl = await _uploadPhoto(dogId);
+      if (photoUrl == null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Photo upload failed — saving dog without photo',
+              style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: AppColors.orange500,
+          ),
+        );
+      }
+    }
+
     final dog = Dog(
-      id: DateTime.now().millisecondsSinceEpoch,
+      id: dogId,
       name: _nameController.text.trim(),
       breed: _breedController.text.trim().isEmpty
           ? 'Mixed'
@@ -335,9 +423,13 @@ class _AddDogFormState extends State<_AddDogForm> {
           ? 'Unknown'
           : _weightController.text.trim(),
       image: '\u{1F436}',
+      photoUrl: photoUrl,
     );
 
-    widget.onDogAdded(dog);
+    if (mounted) {
+      setState(() => _isSaving = false);
+      widget.onDogAdded(dog);
+    }
   }
 
   InputDecoration _fieldDecoration(String label) {
@@ -369,6 +461,60 @@ class _AddDogFormState extends State<_AddDogForm> {
     );
   }
 
+  Widget _buildPhotoPicker() {
+    return GestureDetector(
+      onTap: _isSaving ? null : _pickImage,
+      child: Container(
+        width: 96,
+        height: 96,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppColors.inputFill,
+          border: Border.all(
+            color: _selectedImage != null
+                ? AppColors.orange500
+                : AppColors.borderDashed,
+            width: 2,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: _selectedImage != null
+            ? (kIsWeb
+                ? Image.network(
+                    _selectedImage!.path,
+                    width: 96,
+                    height: 96,
+                    fit: BoxFit.cover,
+                  )
+                : Image.file(
+                    File(_selectedImage!.path),
+                    width: 96,
+                    height: 96,
+                    fit: BoxFit.cover,
+                  ))
+            : Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.camera_alt_outlined,
+                    color: AppColors.textTertiary,
+                    size: 28,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Add Photo',
+                    style: GoogleFonts.nunito(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Form(
@@ -391,6 +537,19 @@ class _AddDogFormState extends State<_AddDogForm> {
                 begin: const Offset(0.8, 0.8),
                 end: const Offset(1.0, 1.0),
                 duration: 300.ms,
+                curve: Curves.easeOut,
+              ),
+          const SizedBox(height: 16),
+
+          // Circular photo picker
+          _buildPhotoPicker()
+              .animate()
+              .fadeIn(delay: 100.ms, duration: 250.ms, curve: Curves.easeOut)
+              .scale(
+                begin: const Offset(0.8, 0.8),
+                end: const Offset(1.0, 1.0),
+                delay: 100.ms,
+                duration: 250.ms,
                 curve: Curves.easeOut,
               ),
           const SizedBox(height: 20),
@@ -467,11 +626,12 @@ class _AddDogFormState extends State<_AddDogForm> {
               ),
           const SizedBox(height: 24),
 
-          // Submit button — stagger index 4
+          // Submit button with loading state — stagger index 4
           PawgoButton(
-            label: 'Add Dog',
-            onPressed: _submit,
-            icon: Icons.pets,
+            label: _isSaving ? 'Saving...' : 'Add Dog',
+            onPressed: _isSaving ? null : _submit,
+            isLoading: _isSaving,
+            icon: _isSaving ? null : Icons.pets,
           )
               .animate()
               .fadeIn(delay: 320.ms, duration: 250.ms, curve: Curves.easeOut)
