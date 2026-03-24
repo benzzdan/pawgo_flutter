@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pawgo/models/mock_data.dart';
 import 'package:pawgo/theme/app_theme.dart';
+import 'package:pawgo/widgets/pawgo_button.dart';
 
 class BookingsScreen extends StatefulWidget {
   const BookingsScreen({super.key});
@@ -217,14 +218,8 @@ class _BookingCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        boxShadow: AppShadows.card,
       ),
       child: Column(
         children: [
@@ -309,54 +304,23 @@ class _BookingCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Container(
+                child: SizedBox(
                   height: 44,
-                  decoration: BoxDecoration(
-                    color: AppColors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border:
-                        Border.all(color: AppColors.orange500, width: 2),
-                  ),
-                  child: Center(
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.nunito(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.orange500,
-                      ),
-                    ),
+                  child: PawgoButton(
+                    label: 'Cancel',
+                    variant: PawgoButtonVariant.secondary,
+                    onPressed: () {},
                   ),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Container(
+                child: SizedBox(
                   height: 44,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [AppColors.orange500, AppColors.orange400],
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.orange500.withValues(alpha: 0.25),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Text(
-                      'Reschedule',
-                      style: GoogleFonts.nunito(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
+                  child: PawgoButton(
+                    label: 'Reschedule',
+                    variant: PawgoButtonVariant.primary,
+                    onPressed: () {},
                   ),
                 ),
               ),

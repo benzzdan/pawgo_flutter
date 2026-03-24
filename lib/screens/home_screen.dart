@@ -171,7 +171,7 @@ class HomeScreen extends StatelessWidget {
             end: Alignment.bottomRight,
             colors: [AppColors.purple50, AppColors.pink50],
           ),
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(
             color: AppColors.purple100.withValues(alpha: 0.5),
           ),
@@ -244,7 +244,7 @@ class HomeScreen extends StatelessWidget {
               end: Alignment.bottomRight,
               colors: [AppColors.green500, AppColors.emerald400],
             ),
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(AppRadius.card),
             boxShadow: [
               BoxShadow(
                 color: AppColors.green500.withValues(alpha: 0.35),
@@ -379,7 +379,7 @@ class HomeScreen extends StatelessWidget {
               end: Alignment.bottomRight,
               colors: [AppColors.orange500, AppColors.orange400],
             ),
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(AppRadius.card),
             boxShadow: [
               BoxShadow(
                 color: AppColors.orange500.withValues(alpha: 0.35),
@@ -467,7 +467,7 @@ class HomeScreen extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 44, horizontal: 20),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(
             color: AppColors.borderDashed,
             width: 2,
