@@ -10,6 +10,7 @@ import 'package:pawgo/models/mock_data.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/widgets/pawgo_bottom_sheet.dart';
 import 'package:pawgo/widgets/pawgo_button.dart';
+import 'package:pawgo/widgets/pawgo_card.dart';
 
 class MyDogsScreen extends StatefulWidget {
   const MyDogsScreen({super.key});
@@ -352,13 +353,7 @@ class _DogCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        boxShadow: AppShadows.card,
-      ),
+    return PawgoCard(
       child: Row(
         children: [
           _buildPhoto(),

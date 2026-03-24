@@ -43,8 +43,12 @@ class _PawgoButtonState extends State<PawgoButton>
       lowerBound: 0.0,
       upperBound: 1.0,
     );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.98).animate(
-      CurvedAnimation(parent: _scaleController, curve: Curves.easeInOut),
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.97).animate(
+      CurvedAnimation(
+        parent: _scaleController,
+        curve: Curves.easeInOut,
+        reverseCurve: Curves.elasticOut,
+      ),
     );
   }
 
