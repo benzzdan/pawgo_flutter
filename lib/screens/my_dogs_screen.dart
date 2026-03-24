@@ -1,10 +1,35 @@
 import 'package:flutter/material.dart';
-import 'package:pawgo/theme/app_theme.dart';
-import 'package:pawgo/models/mock_data.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:pawgo/models/mock_data.dart';
+import 'package:pawgo/theme/app_theme.dart';
+import 'package:pawgo/widgets/pawgo_bottom_sheet.dart';
+import 'package:pawgo/widgets/pawgo_button.dart';
 
-class MyDogsScreen extends StatelessWidget {
+class MyDogsScreen extends StatefulWidget {
   const MyDogsScreen({super.key});
+
+  @override
+  State<MyDogsScreen> createState() => _MyDogsScreenState();
+}
+
+class _MyDogsScreenState extends State<MyDogsScreen> {
+  final List<Dog> _dogs = List.from(MockData.dogs);
+
+  void _showAddDogSheet() {
+    PawgoBottomSheet.show(
+      context: context,
+      title: 'Add a Dog',
+      builder: (sheetContext) => _AddDogForm(
+        onDogAdded: (dog) {
+          setState(() {
+            _dogs.add(dog);
+          });
+          Navigator.of(sheetContext).pop();
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,14 +65,14 @@ class MyDogsScreen extends StatelessWidget {
             ),
           ),
           // Dogs List
-          ...MockData.dogs.map((dog) => Padding(
+          ..._dogs.map((dog) => Padding(
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
                 child: _DogCard(dog: dog),
               )),
           // Add Dog Card
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-            child: _AddDogCard(),
+            child: _AddDogCard(onTap: _showAddDogSheet),
           ),
         ],
       ),
@@ -214,12 +239,14 @@ class _InfoColumn extends StatelessWidget {
 }
 
 class _AddDogCard extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _AddDogCard({required this.onTap});
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () {
-        // Add dog action
-      },
+      onTap: onTap,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 20),
@@ -237,8 +264,8 @@ class _AddDogCard extends StatelessWidget {
                 color: AppColors.orange100,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Icon(Icons.add,
-                  color: AppColors.orange500, size: 32),
+              child:
+                  const Icon(Icons.add, color: AppColors.orange500, size: 32),
             ),
             const SizedBox(height: 12),
             Text(
@@ -260,6 +287,205 @@ class _AddDogCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Bottom-sheet form for adding a new dog, with corgi illustration header
+/// and staggered entrance animations.
+class _AddDogForm extends StatefulWidget {
+  final ValueChanged<Dog> onDogAdded;
+
+  const _AddDogForm({required this.onDogAdded});
+
+  @override
+  State<_AddDogForm> createState() => _AddDogFormState();
+}
+
+class _AddDogFormState extends State<_AddDogForm> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _breedController = TextEditingController();
+  final _ageController = TextEditingController();
+  final _weightController = TextEditingController();
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _breedController.dispose();
+    _ageController.dispose();
+    _weightController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+
+    final dog = Dog(
+      id: DateTime.now().millisecondsSinceEpoch,
+      name: _nameController.text.trim(),
+      breed: _breedController.text.trim().isEmpty
+          ? 'Mixed'
+          : _breedController.text.trim(),
+      age: _ageController.text.trim().isEmpty
+          ? 'Unknown'
+          : _ageController.text.trim(),
+      weight: _weightController.text.trim().isEmpty
+          ? 'Unknown'
+          : _weightController.text.trim(),
+      image: '\u{1F436}',
+    );
+
+    widget.onDogAdded(dog);
+  }
+
+  InputDecoration _fieldDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: GoogleFonts.nunito(
+        fontWeight: FontWeight.w600,
+        color: AppColors.textTertiary,
+      ),
+      floatingLabelStyle: GoogleFonts.nunito(
+        fontWeight: FontWeight.w600,
+        color: AppColors.orange500,
+      ),
+      filled: true,
+      fillColor: AppColors.inputFill,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.input),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.input),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.input),
+        borderSide: const BorderSide(color: AppColors.orange400, width: 1.5),
+      ),
+      contentPadding: const EdgeInsets.all(16),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Form(
+      key: _formKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Corgi illustration header with fadeIn + scaleUp entrance
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Image.asset(
+              'assets/illustrations/corgi_sitting.png',
+              height: 100,
+              fit: BoxFit.contain,
+            ),
+          )
+              .animate()
+              .fadeIn(duration: 300.ms, curve: Curves.easeOut)
+              .scale(
+                begin: const Offset(0.8, 0.8),
+                end: const Offset(1.0, 1.0),
+                duration: 300.ms,
+                curve: Curves.easeOut,
+              ),
+          const SizedBox(height: 20),
+
+          // Name field (required) — stagger index 0
+          TextFormField(
+            controller: _nameController,
+            decoration: _fieldDecoration('Name *'),
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return 'Please enter your dog\'s name';
+              }
+              return null;
+            },
+            textCapitalization: TextCapitalization.words,
+          )
+              .animate()
+              .fadeIn(delay: 0.ms, duration: 250.ms, curve: Curves.easeOut)
+              .slideY(
+                begin: 0.1,
+                end: 0,
+                delay: 0.ms,
+                duration: 250.ms,
+                curve: Curves.easeOut,
+              ),
+          const SizedBox(height: 12),
+
+          // Breed field — stagger index 1
+          TextFormField(
+            controller: _breedController,
+            decoration: _fieldDecoration('Breed'),
+            textCapitalization: TextCapitalization.words,
+          )
+              .animate()
+              .fadeIn(delay: 80.ms, duration: 250.ms, curve: Curves.easeOut)
+              .slideY(
+                begin: 0.1,
+                end: 0,
+                delay: 80.ms,
+                duration: 250.ms,
+                curve: Curves.easeOut,
+              ),
+          const SizedBox(height: 12),
+
+          // Age field — stagger index 2
+          TextFormField(
+            controller: _ageController,
+            decoration: _fieldDecoration('Age'),
+          )
+              .animate()
+              .fadeIn(delay: 160.ms, duration: 250.ms, curve: Curves.easeOut)
+              .slideY(
+                begin: 0.1,
+                end: 0,
+                delay: 160.ms,
+                duration: 250.ms,
+                curve: Curves.easeOut,
+              ),
+          const SizedBox(height: 12),
+
+          // Weight field — stagger index 3
+          TextFormField(
+            controller: _weightController,
+            decoration: _fieldDecoration('Weight'),
+          )
+              .animate()
+              .fadeIn(delay: 240.ms, duration: 250.ms, curve: Curves.easeOut)
+              .slideY(
+                begin: 0.1,
+                end: 0,
+                delay: 240.ms,
+                duration: 250.ms,
+                curve: Curves.easeOut,
+              ),
+          const SizedBox(height: 24),
+
+          // Submit button — stagger index 4
+          PawgoButton(
+            label: 'Add Dog',
+            onPressed: _submit,
+            icon: Icons.pets,
+          )
+              .animate()
+              .fadeIn(delay: 320.ms, duration: 250.ms, curve: Curves.easeOut)
+              .slideY(
+                begin: 0.1,
+                end: 0,
+                delay: 320.ms,
+                duration: 250.ms,
+                curve: Curves.easeOut,
+              ),
+
+          // Bottom padding for keyboard
+          SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
+        ],
       ),
     );
   }
