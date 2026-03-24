@@ -21,6 +21,9 @@ class MyDogsScreen extends StatefulWidget {
 
 class _MyDogsScreenState extends State<MyDogsScreen> {
   final List<Dog> _dogs = List.from(MockData.dogs);
+  int? _lastAddedIndex;
+  int? _removingIndex;
+  bool _isRefreshing = false;
 
   void _showDeleteConfirmation(Dog dog, int index) {
     PawgoBottomSheet.show(
@@ -108,9 +111,7 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
             icon: Icons.delete_outline,
             onPressed: () {
               Navigator.of(sheetContext).pop();
-              setState(() {
-                _dogs.removeAt(index);
-              });
+              _removeDogAnimated(index);
             },
           ),
           const SizedBox(height: 8),
@@ -127,6 +128,27 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
     );
   }
 
+  void _removeDogAnimated(int index) {
+    setState(() => _removingIndex = index);
+    Future.delayed(const Duration(milliseconds: 250), () {
+      if (mounted) {
+        setState(() {
+          _dogs.removeAt(index);
+          _removingIndex = null;
+        });
+      }
+    });
+  }
+
+  Future<void> _onRefresh() async {
+    setState(() => _isRefreshing = true);
+    // Simulate refresh delay
+    await Future.delayed(const Duration(milliseconds: 800));
+    if (mounted) {
+      setState(() => _isRefreshing = false);
+    }
+  }
+
   void _showAddDogSheet() {
     PawgoBottomSheet.show(
       context: context,
@@ -135,6 +157,11 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
         onDogAdded: (dog) {
           setState(() {
             _dogs.add(dog);
+            _lastAddedIndex = _dogs.length - 1;
+          });
+          // Clear the flag after animation plays
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted) setState(() => _lastAddedIndex = null);
           });
         },
         onDismiss: () {
@@ -221,77 +248,133 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
       return _buildEmptyState(context);
     }
 
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 10, 24, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'My Dogs',
-                  style: GoogleFonts.nunito(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.textPrimary,
-                    letterSpacing: -0.5,
-                  ),
+    return RefreshIndicator(
+      onRefresh: _onRefresh,
+      color: AppColors.orange500,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Pull-to-refresh paw icon indicator
+            if (_isRefreshing)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 8, bottom: 4),
+                  child: Icon(
+                    Icons.pets,
+                    color: AppColors.orange500,
+                    size: 24,
+                  )
+                      .animate(
+                        onPlay: (c) => c.repeat(),
+                      )
+                      .rotate(
+                        duration: 1000.ms,
+                        curve: Curves.easeInOut,
+                      ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'Manage your furry friends',
-                  style: GoogleFonts.nunito(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Dogs List
-          ...List.generate(_dogs.length, (index) {
-            final dog = _dogs[index];
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-              child: _DogCard(
-                dog: dog,
-                onEdit: () {
-                  // TODO: edit dog
-                },
-                onDelete: () {
-                  _showDeleteConfirmation(dog, index);
-                },
               ),
-            )
-                .animate()
-                .fadeIn(
-                  delay: (index * 80).ms,
-                  duration: 250.ms,
-                  curve: Curves.easeOut,
-                )
-                .slideY(
-                  begin: 0.1,
-                  end: 0,
-                  delay: (index * 80).ms,
-                  duration: 250.ms,
-                  curve: Curves.easeOut,
-                );
-          }),
-          // Add Dog Button
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-            child: PawgoButton(
-              label: 'Add a Dog',
-              icon: Icons.add,
-              variant: PawgoButtonVariant.secondary,
-              onPressed: _showAddDogSheet,
+            // Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 10, 24, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'My Dogs',
+                    style: GoogleFonts.nunito(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.textPrimary,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Manage your furry friends',
+                    style: GoogleFonts.nunito(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            // Dogs List
+            ...List.generate(_dogs.length, (index) {
+              final dog = _dogs[index];
+              final isRemoving = _removingIndex == index;
+              final isNewlyAdded = _lastAddedIndex == index;
+
+              Widget card = Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+                child: _DogCard(
+                  dog: dog,
+                  onEdit: () {
+                    // TODO: edit dog
+                  },
+                  onDelete: () {
+                    _showDeleteConfirmation(dog, index);
+                  },
+                ),
+              );
+
+              // Delete shrink + fade animation
+              if (isRemoving) {
+                return card
+                    .animate()
+                    .scale(
+                      begin: const Offset(1.0, 1.0),
+                      end: const Offset(0.9, 0.9),
+                      duration: 250.ms,
+                      curve: Curves.easeIn,
+                    )
+                    .fadeOut(duration: 250.ms, curve: Curves.easeIn);
+              }
+
+              // Newly added bounce animation
+              if (isNewlyAdded) {
+                return card
+                    .animate()
+                    .scaleX(
+                      begin: 0.95,
+                      end: 1.0,
+                      duration: 400.ms,
+                      curve: Curves.elasticOut,
+                    )
+                    .fadeIn(duration: 300.ms, curve: Curves.easeOut);
+              }
+
+              // Default staggered entrance
+              return card
+                  .animate()
+                  .fadeIn(
+                    delay: (index * 80).ms,
+                    duration: 250.ms,
+                    curve: Curves.easeOut,
+                  )
+                  .slideY(
+                    begin: 0.1,
+                    end: 0,
+                    delay: (index * 80).ms,
+                    duration: 250.ms,
+                    curve: Curves.easeOut,
+                  );
+            }),
+            // Add Dog Button
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+              child: PawgoButton(
+                label: 'Add a Dog',
+                icon: Icons.add,
+                variant: PawgoButtonVariant.secondary,
+                onPressed: _showAddDogSheet,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -474,6 +557,7 @@ class _AddDogFormState extends State<_AddDogForm> {
   XFile? _selectedImage;
   bool _isSaving = false;
   bool _showSuccessCorgi = false;
+  bool _justPickedPhoto = false;
 
   @override
   void dispose() {
@@ -514,7 +598,14 @@ class _AddDogFormState extends State<_AddDogForm> {
       imageQuality: 80,
     );
     if (picked != null) {
-      setState(() => _selectedImage = picked);
+      setState(() {
+        _selectedImage = picked;
+        _justPickedPhoto = true;
+      });
+      // Reset pulse flag after animation
+      Future.delayed(const Duration(milliseconds: 400), () {
+        if (mounted) setState(() => _justPickedPhoto = false);
+      });
     }
   }
 
@@ -626,7 +717,7 @@ class _AddDogFormState extends State<_AddDogForm> {
   }
 
   Widget _buildPhotoPicker() {
-    return GestureDetector(
+    Widget picker = GestureDetector(
       onTap: _isSaving ? null : _pickImage,
       child: Container(
         width: 96,
@@ -677,6 +768,27 @@ class _AddDogFormState extends State<_AddDogForm> {
               ),
       ),
     );
+
+    // Pulse animation when photo is just picked
+    if (_justPickedPhoto) {
+      picker = picker
+          .animate()
+          .scale(
+            begin: const Offset(1.0, 1.0),
+            end: const Offset(1.05, 1.05),
+            duration: 150.ms,
+            curve: Curves.easeOut,
+          )
+          .then()
+          .scale(
+            begin: const Offset(1.05, 1.05),
+            end: const Offset(1.0, 1.0),
+            duration: 150.ms,
+            curve: Curves.easeIn,
+          );
+    }
+
+    return picker;
   }
 
   @override
