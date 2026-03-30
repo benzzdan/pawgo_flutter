@@ -695,7 +695,6 @@ class _AddDogFormState extends State<_AddDogForm> {
 
   XFile? _selectedImage;
   bool _isSaving = false;
-  bool _showSuccessCorgi = false;
   bool _justPickedPhoto = false;
 
   @override
@@ -772,7 +771,6 @@ class _AddDogFormState extends State<_AddDogForm> {
       if (mounted) {
         setState(() {
           _isSaving = false;
-          _showSuccessCorgi = true;
         });
         widget.onDogAdded(result.dog);
         await Future.delayed(const Duration(milliseconds: 500));
