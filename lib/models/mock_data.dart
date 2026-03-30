@@ -1,3 +1,5 @@
+import 'dart:ui' show Color;
+
 class Walker {
   final String id;
   final String userId;
@@ -117,25 +119,152 @@ class Dog {
 }
 
 class Booking {
-  final int id;
-  final String walker;
-  final String date;
-  final String time;
-  final String duration;
-  final String location;
+  final String id;
+  final String ownerId;
+  final String walkerId;
+  final String dogId;
   final String status;
-  final String image;
+  final DateTime scheduledAt;
+  final DateTime? startedAt;
+  final DateTime? completedAt;
+  final int? durationMinutes;
+  final double totalPriceMxn;
+  final double commissionMxn;
+  final String? notes;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+
+  // Joined fields
+  final String walkerName;
+  final String? walkerAvatarUrl;
+  final String dogName;
 
   const Booking({
     required this.id,
-    required this.walker,
-    required this.date,
-    required this.time,
-    required this.duration,
-    required this.location,
+    required this.ownerId,
+    required this.walkerId,
+    required this.dogId,
     required this.status,
-    required this.image,
+    required this.scheduledAt,
+    this.startedAt,
+    this.completedAt,
+    this.durationMinutes,
+    this.totalPriceMxn = 0,
+    this.commissionMxn = 0,
+    this.notes,
+    this.createdAt,
+    this.updatedAt,
+    this.walkerName = 'Unknown Walker',
+    this.walkerAvatarUrl,
+    this.dogName = '',
   });
+
+  factory Booking.fromJson(Map<String, dynamic> json) {
+    final walker = json['walkers'] as Map<String, dynamic>?;
+    final walkerUser = walker?['users'] as Map<String, dynamic>?;
+    final dog = json['dogs'] as Map<String, dynamic>?;
+    return Booking(
+      id: json['id'] as String,
+      ownerId: json['owner_id'] as String,
+      walkerId: json['walker_id'] as String,
+      dogId: json['dog_id'] as String,
+      status: json['status'] as String,
+      scheduledAt: DateTime.parse(json['scheduled_at'] as String),
+      startedAt: json['started_at'] != null
+          ? DateTime.parse(json['started_at'] as String)
+          : null,
+      completedAt: json['completed_at'] != null
+          ? DateTime.parse(json['completed_at'] as String)
+          : null,
+      durationMinutes: json['duration_minutes'] as int?,
+      totalPriceMxn:
+          (json['total_price_mxn'] as num?)?.toDouble() ?? 0,
+      commissionMxn:
+          (json['commission_mxn'] as num?)?.toDouble() ?? 0,
+      notes: json['notes'] as String?,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'] as String)
+          : null,
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'] as String)
+          : null,
+      walkerName: walkerUser?['full_name'] as String? ?? 'Unknown Walker',
+      walkerAvatarUrl: walkerUser?['avatar_url'] as String?,
+      dogName: dog?['name'] as String? ?? '',
+    );
+  }
+
+  /// Whether the booking is in the future / active.
+  bool get isUpcoming =>
+      status == 'pending' ||
+      status == 'confirmed' ||
+      status == 'walker_en_route' ||
+      status == 'walk_started';
+
+  /// Whether the booking is completed.
+  bool get isPast => status == 'walk_completed';
+
+  /// Whether the booking is cancelled.
+  bool get isCancelled => status == 'cancelled';
+
+  /// Human-readable status label.
+  String get displayStatus {
+    switch (status) {
+      case 'pending':
+        return 'Pending';
+      case 'confirmed':
+        return 'Confirmed';
+      case 'walker_en_route':
+        return 'Walker En Route';
+      case 'walk_started':
+        return 'In Progress';
+      case 'walk_completed':
+        return 'Completed';
+      case 'cancelled':
+        return 'Cancelled';
+      case 'disputed':
+        return 'Disputed';
+      default:
+        return status;
+    }
+  }
+
+  /// Status badge color.
+  Color get statusColor {
+    switch (status) {
+      case 'confirmed':
+      case 'walk_completed':
+        return const Color(0xFF16A34A); // green
+      case 'walk_started':
+      case 'walker_en_route':
+        return const Color(0xFF2563EB); // blue
+      case 'cancelled':
+      case 'disputed':
+        return const Color(0xFFDC2626); // red
+      default:
+        return const Color(0xFFF59E0B); // amber for pending
+    }
+  }
+
+  /// Status badge background color.
+  Color get statusBgColor {
+    switch (status) {
+      case 'confirmed':
+      case 'walk_completed':
+        return const Color(0xFFF0FDF4); // green-50
+      case 'walk_started':
+      case 'walker_en_route':
+        return const Color(0xFFEFF6FF); // blue-50
+      case 'cancelled':
+      case 'disputed':
+        return const Color(0xFFFEF2F2); // red-50
+      default:
+        return const Color(0xFFFFFBEB); // amber-50
+    }
+  }
+
+  /// Formatted price string.
+  String get displayPrice => '\$${totalPriceMxn.toStringAsFixed(0)} MXN';
 }
 
 class ChatMessage {
@@ -195,28 +324,7 @@ class SavedAddress {
 class MockData {
   static const dogs = <Dog>[];
 
-  static const bookings = [
-    Booking(
-      id: 1,
-      walker: 'Sarah Johnson',
-      date: 'Mar 8, 2026',
-      time: '2:00 PM',
-      duration: '30 min',
-      location: 'Central Park',
-      status: 'upcoming',
-      image: '\u{1F469}',
-    ),
-    Booking(
-      id: 2,
-      walker: 'Mike Chen',
-      date: 'Mar 10, 2026',
-      time: '4:30 PM',
-      duration: '45 min',
-      location: 'Riverside Trail',
-      status: 'upcoming',
-      image: '\u{1F468}',
-    ),
-  ];
+  static const bookings = <Booking>[];
 
   static const chatMessages = [
     ChatMessage(

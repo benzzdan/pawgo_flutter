@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import 'package:pawgo/models/mock_data.dart';
+import 'package:pawgo/services/booking_service.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/widgets/pawgo_button.dart';
 
@@ -14,6 +16,32 @@ class BookingsScreen extends StatefulWidget {
 
 class _BookingsScreenState extends State<BookingsScreen> {
   String _selectedTab = 'upcoming';
+  late Future<List<Booking>> _bookingsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _bookingsFuture = BookingService.fetchBookings();
+  }
+
+  void _retry() {
+    setState(() {
+      _bookingsFuture = BookingService.fetchBookings();
+    });
+  }
+
+  List<Booking> _filterBookings(List<Booking> bookings) {
+    switch (_selectedTab) {
+      case 'upcoming':
+        return bookings.where((b) => b.isUpcoming).toList();
+      case 'past':
+        return bookings.where((b) => b.isPast).toList();
+      case 'cancelled':
+        return bookings.where((b) => b.isCancelled).toList();
+      default:
+        return bookings;
+    }
+  }
 
   Widget _buildEmptyState(BuildContext context) {
     final reduceMotion = MediaQuery.of(context).accessibleNavigation;
@@ -27,7 +55,6 @@ class _BookingsScreenState extends State<BookingsScreen> {
       ),
     );
 
-    // Subtle floating idle animation (2px, 3s loop) unless reduce-motion
     if (!reduceMotion) {
       illustration = illustration
           .animate(onPlay: (controller) => controller.repeat(reverse: true))
@@ -66,7 +93,6 @@ class _BookingsScreenState extends State<BookingsScreen> {
       ),
     );
 
-    // FadeIn + scaleUp entrance animation unless reduce-motion
     if (!reduceMotion) {
       content = content
           .animate()
@@ -82,10 +108,56 @@ class _BookingsScreenState extends State<BookingsScreen> {
     return content;
   }
 
+  Widget _buildErrorState(Object error) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: AppColors.textSecondary),
+            const SizedBox(height: 16),
+            Text(
+              'Could not load bookings',
+              style: GoogleFonts.nunito(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Please check your connection and try again.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.nunito(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: 140,
+              height: 44,
+              child: PawgoButton(
+                label: 'Retry',
+                variant: PawgoButtonVariant.primary,
+                onPressed: _retry,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingState() {
+    return const Center(
+      child: CircularProgressIndicator(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bookings = MockData.bookings;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -142,19 +214,33 @@ class _BookingsScreenState extends State<BookingsScreen> {
           ),
         ),
         const SizedBox(height: 20),
-        // Bookings List or Empty State
+        // Bookings List, Loading, Error, or Empty State
         Expanded(
-          child: bookings.isEmpty
-              ? _buildEmptyState(context)
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                  itemCount: bookings.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 16),
-                  itemBuilder: (context, index) {
-                    final booking = bookings[index];
-                    return _BookingCard(booking: booking);
-                  },
-                ),
+          child: FutureBuilder<List<Booking>>(
+            future: _bookingsFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return _buildLoadingState();
+              }
+              if (snapshot.hasError) {
+                return _buildErrorState(snapshot.error!);
+              }
+              final allBookings = snapshot.data ?? [];
+              final filtered = _filterBookings(allBookings);
+              if (filtered.isEmpty) {
+                return _buildEmptyState(context);
+              }
+              return ListView.separated(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                itemCount: filtered.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 16),
+                itemBuilder: (context, index) {
+                  final booking = filtered[index];
+                  return _BookingCard(booking: booking);
+                },
+              );
+            },
+          ),
         ),
       ],
     );
@@ -214,6 +300,14 @@ class _BookingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dateFormat = DateFormat('MMM d, yyyy');
+    final timeFormat = DateFormat('h:mm a');
+    final dateStr = dateFormat.format(booking.scheduledAt.toLocal());
+    final timeStr = timeFormat.format(booking.scheduledAt.toLocal());
+    final durationStr = booking.durationMinutes != null
+        ? '${booking.durationMinutes} min'
+        : '';
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -237,10 +331,32 @@ class _BookingCard extends StatelessWidget {
                   ),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Center(
-                  child:
-                      Text(booking.image, style: const TextStyle(fontSize: 24)),
-                ),
+                child: booking.walkerAvatarUrl != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.network(
+                          booking.walkerAvatarUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Center(
+                            child: Text(
+                              booking.walkerName.isNotEmpty
+                                  ? booking.walkerName[0].toUpperCase()
+                                  : '?',
+                              style: const TextStyle(
+                                  fontSize: 24, color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      )
+                    : Center(
+                        child: Text(
+                          booking.walkerName.isNotEmpty
+                              ? booking.walkerName[0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(
+                              fontSize: 24, color: Colors.white),
+                        ),
+                      ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -248,7 +364,7 @@ class _BookingCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      booking.walker,
+                      booking.walkerName,
                       style: GoogleFonts.nunito(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
@@ -260,15 +376,15 @@ class _BookingCard extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: AppColors.green50,
+                        color: booking.statusBgColor,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        'Confirmed',
+                        booking.displayStatus,
                         style: GoogleFonts.nunito(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.green600,
+                          color: booking.statusColor,
                         ),
                       ),
                     ),
@@ -283,49 +399,64 @@ class _BookingCard extends StatelessWidget {
             icon: Icons.calendar_today,
             iconColor: AppColors.blue600,
             bgColor: AppColors.blue50,
-            text: booking.date,
+            text: dateStr,
           ),
           const SizedBox(height: 10),
           _DetailRow(
             icon: Icons.access_time,
             iconColor: AppColors.purple600,
             bgColor: AppColors.purple50,
-            text: '${booking.time} \u{2022} ${booking.duration}',
+            text: durationStr.isNotEmpty
+                ? '$timeStr \u{2022} $durationStr'
+                : timeStr,
           ),
-          const SizedBox(height: 10),
-          _DetailRow(
-            icon: Icons.location_on,
-            iconColor: AppColors.orange500,
-            bgColor: AppColors.orange50,
-            text: booking.location,
-          ),
-          const SizedBox(height: 16),
-          // Buttons
-          Row(
-            children: [
-              Expanded(
-                child: SizedBox(
-                  height: 44,
-                  child: PawgoButton(
-                    label: 'Cancel',
-                    variant: PawgoButtonVariant.secondary,
-                    onPressed: () {},
+          if (booking.dogName.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _DetailRow(
+              icon: Icons.pets,
+              iconColor: AppColors.orange500,
+              bgColor: AppColors.orange50,
+              text: booking.dogName,
+            ),
+          ],
+          if (booking.totalPriceMxn > 0) ...[
+            const SizedBox(height: 10),
+            _DetailRow(
+              icon: Icons.attach_money,
+              iconColor: AppColors.green600,
+              bgColor: AppColors.green50,
+              text: booking.displayPrice,
+            ),
+          ],
+          if (booking.isUpcoming) ...[
+            const SizedBox(height: 16),
+            // Buttons
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 44,
+                    child: PawgoButton(
+                      label: 'Cancel',
+                      variant: PawgoButtonVariant.secondary,
+                      onPressed: () {},
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: SizedBox(
-                  height: 44,
-                  child: PawgoButton(
-                    label: 'Reschedule',
-                    variant: PawgoButtonVariant.primary,
-                    onPressed: () {},
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SizedBox(
+                    height: 44,
+                    child: PawgoButton(
+                      label: 'Reschedule',
+                      variant: PawgoButtonVariant.primary,
+                      onPressed: () {},
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ],
       ),
     );
