@@ -1,59 +1,119 @@
 class Walker {
-  final int id;
+  final String id;
+  final String userId;
   final String name;
-  final String avatar;
+  final String? avatarUrl;
   final double rating;
-  final int reviews;
-  final int price;
-  final String distance;
-  final bool verified;
-  final bool backgroundCheck;
-  final String responseTime;
-  final int walks;
-  final List<String> specialties;
-  final String availability;
-  final String availableColor;
-  final String bio;
-  final List<String> certifications;
+  final int totalWalks;
+  final double hourlyRateMxn;
+  final bool backgroundChecked;
+  final bool isEnabled;
+  final String? bio;
+  final int experienceYears;
+  final DateTime? createdAt;
 
   const Walker({
     required this.id,
+    required this.userId,
     required this.name,
-    required this.avatar,
-    required this.rating,
-    required this.reviews,
-    required this.price,
-    required this.distance,
-    required this.verified,
-    required this.backgroundCheck,
-    required this.responseTime,
-    required this.walks,
-    required this.specialties,
-    required this.availability,
-    required this.availableColor,
-    this.bio = '',
-    this.certifications = const [],
+    this.avatarUrl,
+    this.rating = 0,
+    this.totalWalks = 0,
+    this.hourlyRateMxn = 0,
+    this.backgroundChecked = false,
+    this.isEnabled = false,
+    this.bio,
+    this.experienceYears = 0,
+    this.createdAt,
   });
+
+  factory Walker.fromJson(Map<String, dynamic> json) {
+    final user = json['users'] as Map<String, dynamic>?;
+    return Walker(
+      id: json['id'] as String,
+      userId: json['user_id'] as String,
+      name: user?['full_name'] as String? ?? 'Unknown Walker',
+      avatarUrl: user?['avatar_url'] as String?,
+      rating: (json['avg_rating'] as num?)?.toDouble() ?? 0,
+      totalWalks: json['total_walks'] as int? ?? 0,
+      hourlyRateMxn: (json['hourly_rate_mxn'] as num?)?.toDouble() ?? 0,
+      backgroundChecked: json['background_checked'] as bool? ?? false,
+      isEnabled: json['is_enabled'] as bool? ?? false,
+      bio: json['bio'] as String?,
+      experienceYears: json['experience_years'] as int? ?? 0,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'] as String)
+          : null,
+    );
+  }
+
+  /// Display helpers for UI
+  String get displayAvatar => avatarUrl != null ? '' : '🚶';
+  String get displayPrice => '\$${hourlyRateMxn.toStringAsFixed(0)}';
+  String get displayExperience =>
+      experienceYears > 0 ? '$experienceYears+ yrs' : 'New';
+  String get displayRating => rating.toStringAsFixed(1);
 }
 
 class Dog {
-  final int id;
+  final String id;
+  final String ownerId;
   final String name;
-  final String breed;
-  final String age;
-  final String weight;
-  final String image;
+  final String? breed;
+  final int? ageYears;
+  final double? weightKg;
+  final String? notes;
   final String? photoUrl;
+  final DateTime? createdAt;
 
   const Dog({
     required this.id,
+    required this.ownerId,
     required this.name,
-    required this.breed,
-    required this.age,
-    required this.weight,
-    required this.image,
+    this.breed,
+    this.ageYears,
+    this.weightKg,
+    this.notes,
     this.photoUrl,
+    this.createdAt,
   });
+
+  factory Dog.fromJson(Map<String, dynamic> json) {
+    return Dog(
+      id: json['id'] as String,
+      ownerId: json['owner_id'] as String,
+      name: json['name'] as String,
+      breed: json['breed'] as String?,
+      ageYears: json['age_years'] as int?,
+      weightKg: json['weight_kg'] != null
+          ? (json['weight_kg'] as num).toDouble()
+          : null,
+      notes: json['notes'] as String?,
+      photoUrl: json['photo_url'] as String?,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'] as String)
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toInsertJson() {
+    return {
+      'owner_id': ownerId,
+      'name': name,
+      if (breed != null) 'breed': breed,
+      if (ageYears != null) 'age_years': ageYears,
+      if (weightKg != null) 'weight_kg': weightKg,
+      if (notes != null) 'notes': notes,
+      if (photoUrl != null) 'photo_url': photoUrl,
+    };
+  }
+
+  /// Display helpers for UI
+  String get displayAge =>
+      ageYears != null ? '$ageYears yr${ageYears == 1 ? '' : 's'}' : 'Unknown';
+  String get displayWeight =>
+      weightKg != null ? '${weightKg!.toStringAsFixed(1)} kg' : 'Unknown';
+  String get displayBreed => breed ?? 'Mixed';
 }
 
 class Booking {
@@ -133,98 +193,7 @@ class SavedAddress {
 }
 
 class MockData {
-  static const walkers = [
-    Walker(
-      id: 1,
-      name: 'Sarah Johnson',
-      avatar: '\u{1F469}',
-      rating: 4.9,
-      reviews: 127,
-      price: 25,
-      distance: '0.3 mi',
-      verified: true,
-      backgroundCheck: true,
-      responseTime: '~5 min',
-      walks: 450,
-      specialties: ['Small Dogs', 'Puppies'],
-      availability: 'Available Now',
-      availableColor: 'green',
-      bio:
-          'Passionate dog lover with 5+ years of experience. I treat every pup like my own and provide lots of love, exercise, and attention!',
-      certifications: [
-        'Pet First Aid Certified',
-        'Dog Training Certificate',
-        'Insured & Bonded',
-      ],
-    ),
-    Walker(
-      id: 2,
-      name: 'Mike Chen',
-      avatar: '\u{1F468}',
-      rating: 4.8,
-      reviews: 98,
-      price: 22,
-      distance: '0.5 mi',
-      verified: true,
-      backgroundCheck: true,
-      responseTime: '~10 min',
-      walks: 320,
-      specialties: ['Large Dogs', 'Active'],
-      availability: 'Available Today',
-      availableColor: 'blue',
-    ),
-    Walker(
-      id: 3,
-      name: 'Emily Rodriguez',
-      avatar: '\u{1F469}\u{200D}\u{1F9B1}',
-      rating: 5.0,
-      reviews: 156,
-      price: 30,
-      distance: '0.7 mi',
-      verified: true,
-      backgroundCheck: true,
-      responseTime: '~3 min',
-      walks: 580,
-      specialties: ['All Breeds', 'Training'],
-      availability: 'Available Now',
-      availableColor: 'green',
-    ),
-    Walker(
-      id: 4,
-      name: 'James Wilson',
-      avatar: '\u{1F9D4}',
-      rating: 4.7,
-      reviews: 89,
-      price: 20,
-      distance: '1.2 mi',
-      verified: true,
-      backgroundCheck: true,
-      responseTime: '~15 min',
-      walks: 250,
-      specialties: ['Senior Dogs', 'Gentle'],
-      availability: 'Available Tomorrow',
-      availableColor: 'gray',
-    ),
-  ];
-
-  static const dogs = [
-    Dog(
-      id: 1,
-      name: 'Max',
-      breed: 'Golden Retriever',
-      age: '3 years',
-      weight: '65 lbs',
-      image: '\u{1F415}',
-    ),
-    Dog(
-      id: 2,
-      name: 'Bella',
-      breed: 'French Bulldog',
-      age: '2 years',
-      weight: '28 lbs',
-      image: '\u{1F436}',
-    ),
-  ];
+  static const dogs = <Dog>[];
 
   static const bookings = [
     Booking(

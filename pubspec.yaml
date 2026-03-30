@@ -15,11 +15,16 @@ dependencies:
   flutter_animate: ^4.5.2
   image_picker: ^1.1.2
   supabase_flutter: ^2.8.4
+  confetti: ^0.8.0
+  lottie: ^3.3.1
+  flutter_svg: ^2.0.17
+  shared_preferences: ^2.5.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  mocktail: ^1.0.4
 
 flutter:
   uses-material-design: true
@@ -27,3 +32,4 @@ flutter:
     - assets/illustrations/corgi_lying.png
     - assets/illustrations/corgi_sitting.png
     - assets/illustrations/corgi_wagging.png
+    - assets/animations/corgi_celebration.json

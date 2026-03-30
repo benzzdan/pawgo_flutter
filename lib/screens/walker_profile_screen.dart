@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/models/mock_data.dart';
+import 'package:pawgo/services/walker_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class WalkerProfileScreen extends StatefulWidget {
@@ -13,8 +14,9 @@ class WalkerProfileScreen extends StatefulWidget {
 class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
   String? _selectedDate;
   String? _selectedTime;
-
-  final walker = MockData.walkers[0];
+  Walker? _walker;
+  bool _isLoading = true;
+  String? _error;
 
   final availableDates = [
     {'date': 'Today', 'day': 'Mar 6', 'available': true},
@@ -31,6 +33,46 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
     {'time': '4:00 PM', 'available': true},
     {'time': '6:00 PM', 'available': true},
   ];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_isLoading && _walker == null && _error == null) {
+      _loadWalker();
+    }
+  }
+
+  Future<void> _loadWalker() async {
+    final walkerId = ModalRoute.of(context)?.settings.arguments as String?;
+    if (walkerId == null) {
+      setState(() {
+        _error = 'Walker not found.';
+        _isLoading = false;
+      });
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final walker = await WalkerService.fetchWalkerById(walkerId);
+      if (mounted) {
+        setState(() {
+          _walker = walker;
+          _isLoading = false;
+          if (walker == null) _error = 'Walker not found.';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Unable to load walker profile. Please try again.';
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,31 +113,83 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
               ),
             ),
             // Content
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    _buildProfileHeader(),
-                    const SizedBox(height: 12),
-                    _buildVerificationSection(),
-                    const SizedBox(height: 12),
-                    _buildAboutSection(),
-                    const SizedBox(height: 12),
-                    _buildQuickBookSection(),
-                    const SizedBox(height: 12),
-                    _buildReviewsSection(),
-                    const SizedBox(height: 24),
-                  ],
-                ),
-              ),
-            ),
+            Expanded(child: _buildContent()),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildProfileHeader() {
+  Widget _buildContent() {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.orange500),
+      );
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline,
+                  size: 48, color: AppColors.gray400),
+              const SizedBox(height: 16),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.nunito(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              GestureDetector(
+                onTap: _loadWalker,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.orange500,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'Retry',
+                    style: GoogleFonts.nunito(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final walker = _walker!;
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          _buildProfileHeader(walker),
+          const SizedBox(height: 12),
+          _buildVerificationSection(walker),
+          const SizedBox(height: 12),
+          _buildAboutSection(walker),
+          const SizedBox(height: 12),
+          _buildQuickBookSection(walker),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileHeader(Walker walker) {
     return Container(
       color: AppColors.white,
       padding: const EdgeInsets.all(24),
@@ -119,12 +213,24 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
                       ),
                       borderRadius: BorderRadius.circular(22),
                     ),
-                    child: Center(
-                      child: Text(walker.avatar,
-                          style: const TextStyle(fontSize: 40)),
-                    ),
+                    child: walker.avatarUrl != null
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(22),
+                            child: Image.network(
+                              walker.avatarUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const Center(
+                                child: Text('🚶',
+                                    style: TextStyle(fontSize: 40)),
+                              ),
+                            ),
+                          )
+                        : const Center(
+                            child:
+                                Text('🚶', style: TextStyle(fontSize: 40)),
+                          ),
                   ),
-                  if (walker.verified)
+                  if (walker.backgroundChecked)
                     Positioned(
                       bottom: -4,
                       right: -4,
@@ -163,14 +269,14 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
                             size: 16, color: AppColors.orange500),
                         const SizedBox(width: 4),
                         Text(
-                          '${walker.rating}',
+                          walker.displayRating,
                           style: GoogleFonts.nunito(
                             fontWeight: FontWeight.w700,
                             color: AppColors.textPrimary,
                           ),
                         ),
                         Text(
-                          ' (${walker.reviews} reviews)',
+                          ' (${walker.totalWalks} walks)',
                           style: GoogleFonts.nunito(
                             fontWeight: FontWeight.w600,
                             color: AppColors.textSecondary,
@@ -179,55 +285,41 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.location_on,
-                                size: 14, color: AppColors.textSecondary),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${walker.distance} away',
-                              style: GoogleFonts.nunito(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textSecondary,
-                              ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: walker.isEnabled
+                            ? AppColors.green100
+                            : AppColors.gray100,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: walker.isEnabled
+                                  ? AppColors.green500
+                                  : AppColors.gray400,
+                              shape: BoxShape.circle,
                             ),
-                          ],
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppColors.green100,
-                            borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 6,
-                                height: 6,
-                                decoration: const BoxDecoration(
-                                  color: AppColors.green500,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                walker.availability,
-                                style: GoogleFonts.nunito(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.green700,
-                                ),
-                              ),
-                            ],
+                          const SizedBox(width: 6),
+                          Text(
+                            walker.isEnabled ? 'Available' : 'Unavailable',
+                            style: GoogleFonts.nunito(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: walker.isEnabled
+                                  ? AppColors.green700
+                                  : AppColors.textSecondary,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -237,7 +329,7 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '\$${walker.price}',
+                    walker.displayPrice,
                     style: GoogleFonts.nunito(
                       fontSize: 24,
                       fontWeight: FontWeight.w900,
@@ -320,7 +412,7 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
     );
   }
 
-  Widget _buildVerificationSection() {
+  Widget _buildVerificationSection(Walker walker) {
     return Container(
       color: AppColors.white,
       padding: const EdgeInsets.all(24),
@@ -336,44 +428,26 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          _VerificationBadge(
-            icon: Icons.shield,
-            iconColor: Colors.white,
-            bgColor: AppColors.green500,
-            gradientColors: const [AppColors.green50, Color(0xFFECFDF5)],
-            title: 'Background Check Verified',
-            subtitle: 'Cleared on Mar 1, 2026',
-            checkColor: AppColors.green600,
-          ),
-          const SizedBox(height: 12),
-          _VerificationBadge(
-            icon: Icons.workspace_premium,
-            iconColor: Colors.white,
-            bgColor: AppColors.blue500,
-            gradientColors: const [AppColors.blue50, Color(0xFFECFEFF)],
-            title: 'Identity Verified',
-            subtitle: 'Government ID confirmed',
-            checkColor: AppColors.blue600,
-          ),
-          const SizedBox(height: 12),
-          _VerificationBadge(
-            icon: Icons.school,
-            iconColor: Colors.white,
-            bgColor: AppColors.purple500,
-            gradientColors: const [AppColors.purple50, Color(0xFFF3E8FF)],
-            title: 'Pet First Aid Certified',
-            subtitle: 'Red Cross certified \u{2022} 2024',
-            checkColor: AppColors.purple600,
-          ),
+          if (walker.backgroundChecked)
+            _VerificationBadge(
+              icon: Icons.shield,
+              iconColor: Colors.white,
+              bgColor: AppColors.green500,
+              gradientColors: const [AppColors.green50, Color(0xFFECFDF5)],
+              title: 'Background Check Verified',
+              subtitle: 'Cleared',
+              checkColor: AppColors.green600,
+            ),
           const SizedBox(height: 16),
           // Stats
           Row(
             children: [
-              _StatBox(value: '${walker.walks}', label: 'Total Walks'),
+              _StatBox(value: '${walker.totalWalks}', label: 'Total Walks'),
               const SizedBox(width: 12),
-              _StatBox(value: '5+', label: 'Years Exp'),
+              _StatBox(value: walker.displayExperience, label: 'Experience'),
               const SizedBox(width: 12),
-              _StatBox(value: walker.responseTime, label: 'Response'),
+              _StatBox(
+                  value: walker.displayRating, label: 'Rating'),
             ],
           ),
         ],
@@ -381,7 +455,7 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
     );
   }
 
-  Widget _buildAboutSection() {
+  Widget _buildAboutSection(Walker walker) {
     return Container(
       color: AppColors.white,
       padding: const EdgeInsets.all(24),
@@ -398,7 +472,7 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            walker.bio,
+            walker.bio ?? 'No bio provided.',
             style: GoogleFonts.nunito(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -406,44 +480,12 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
               height: 1.5,
             ),
           ),
-          const SizedBox(height: 16),
-          Text(
-            'Specialties',
-            style: GoogleFonts.nunito(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: walker.specialties
-                .map((s) => Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppColors.orange50,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        s,
-                        style: GoogleFonts.nunito(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.orange500,
-                        ),
-                      ),
-                    ))
-                .toList(),
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildQuickBookSection() {
+  Widget _buildQuickBookSection(Walker walker) {
     return Container(
       color: AppColors.white,
       padding: const EdgeInsets.all(24),
@@ -632,7 +674,7 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
               child: Center(
                 child: Text(
                   (_selectedDate != null && _selectedTime != null)
-                      ? 'Confirm Booking - \$${walker.price}'
+                      ? 'Confirm Booking - ${walker.displayPrice}'
                       : 'Select Date & Time',
                   style: GoogleFonts.nunito(
                     fontSize: 18,
@@ -643,69 +685,6 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
                   ),
                 ),
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildReviewsSection() {
-    return Container(
-      color: AppColors.white,
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Reviews (${walker.reviews})',
-                style: GoogleFonts.nunito(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              Row(
-                children: [
-                  const Icon(Icons.star, size: 18, color: AppColors.orange500),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${walker.rating}',
-                    style: GoogleFonts.nunito(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ...MockData.reviews.map((review) => _ReviewCard(review: review)),
-          const SizedBox(height: 16),
-          Container(
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'View All Reviews',
-                  style: GoogleFonts.nunito(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                const Icon(Icons.chevron_right, size: 16),
-              ],
             ),
           ),
         ],
@@ -815,125 +794,6 @@ class _StatBox extends StatelessWidget {
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ReviewCard extends StatelessWidget {
-  final Review review;
-
-  const _ReviewCard({required this.review});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Container(
-        padding: const EdgeInsets.only(bottom: 16),
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: AppColors.borderLight)),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.blue400, AppColors.blue500],
-                ),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Center(
-                child:
-                    Text(review.avatar, style: const TextStyle(fontSize: 18)),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        review.author,
-                        style: GoogleFonts.nunito(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      if (review.verified) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppColors.blue100,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.check,
-                                  size: 10, color: AppColors.blue600),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Verified',
-                                style: GoogleFonts.nunito(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.blue700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      ...List.generate(
-                        5,
-                        (i) => Icon(
-                          Icons.star,
-                          size: 12,
-                          color: i < review.rating
-                              ? AppColors.orange500
-                              : AppColors.gray300,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        review.date,
-                        style: GoogleFonts.nunito(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    review.text,
-                    style: GoogleFonts.nunito(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFF666666),
-                      height: 1.5,
-                    ),
-                  ),
-                ],
               ),
             ),
           ],
