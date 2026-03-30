@@ -35,6 +35,8 @@ class PawgoApp extends StatelessWidget {
       title: 'Pawgo',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.theme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: ThemeMode.system,
       initialRoute: '/',
       onGenerateRoute: (settings) {
         final routes = <String, WidgetBuilder>{

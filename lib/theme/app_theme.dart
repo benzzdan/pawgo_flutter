@@ -74,6 +74,18 @@ class AppColors {
   static const gray100 = Color(0xFFF3F4F6);
   static const gray300 = Color(0xFFD1D5DB);
   static const gray400 = Color(0xFF9CA3AF);
+
+  // Dark mode palette
+  static const darkBackground = Color(0xFF1A1A1E);
+  static const darkSurface = Color(0xFF242428);
+  static const darkCard = Color(0xFF2A2A2E);
+  static const darkInputFill = Color(0xFF2E2E32);
+  static const darkTextPrimary = Color(0xFFF0F0F0);
+  static const darkTextSecondary = Color(0xFF9E9E9E);
+  static const darkTextTertiary = Color(0xFF757575);
+  static const darkBorder = Color(0xFF3A3A3E);
+  static const darkBorderLight = Color(0xFF333336);
+  static const darkDivider = Color(0xFF3A3A3E);
 }
 
 /// Design-system border radii for the minimalistic theme.
@@ -291,6 +303,177 @@ class AppTheme {
           },
         ),
       );
+
+  static ThemeData get darkTheme => ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: AppColors.darkBackground,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: AppColors.orange500,
+          brightness: Brightness.dark,
+          surface: AppColors.darkBackground,
+        ),
+        textTheme: TextTheme(
+          headlineLarge: _baseTextStyle.copyWith(
+            fontSize: 32,
+            fontWeight: FontWeight.w800,
+            color: AppColors.darkTextPrimary,
+            letterSpacing: -0.5,
+          ),
+          headlineMedium: _baseTextStyle.copyWith(
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            color: AppColors.darkTextPrimary,
+          ),
+          headlineSmall: _baseTextStyle.copyWith(
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            color: AppColors.darkTextPrimary,
+          ),
+          titleLarge: _baseTextStyle.copyWith(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: AppColors.darkTextPrimary,
+          ),
+          titleMedium: _baseTextStyle.copyWith(
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+            color: AppColors.darkTextSecondary,
+          ),
+          bodyLarge: _baseTextStyle.copyWith(
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+            color: AppColors.darkTextPrimary,
+          ),
+          bodyMedium: _baseTextStyle.copyWith(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: AppColors.darkTextSecondary,
+          ),
+          bodySmall: _baseTextStyle.copyWith(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: AppColors.darkTextSecondary,
+          ),
+          labelLarge: _baseTextStyle.copyWith(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: AppColors.darkTextPrimary,
+          ),
+          labelMedium: _baseTextStyle.copyWith(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: AppColors.darkTextSecondary,
+          ),
+          labelSmall: _baseTextStyle.copyWith(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: AppColors.darkTextTertiary,
+          ),
+        ),
+        appBarTheme: AppBarTheme(
+          backgroundColor: AppColors.darkSurface,
+          elevation: 0,
+          surfaceTintColor: Colors.transparent,
+          titleTextStyle: _baseTextStyle.copyWith(
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            color: AppColors.darkTextPrimary,
+          ),
+        ),
+        cardTheme: CardThemeData(
+          color: AppColors.darkCard,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.card),
+          ),
+          margin: EdgeInsets.zero,
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.orange500,
+            foregroundColor: AppColors.white,
+            elevation: 0,
+            minimumSize: const Size(double.infinity, 56),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.button),
+            ),
+            textStyle: _baseTextStyle.copyWith(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.orange400,
+            elevation: 0,
+            minimumSize: const Size(double.infinity, 56),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.button),
+            ),
+            side: const BorderSide(color: AppColors.orange400, width: 1.5),
+            textStyle: _baseTextStyle.copyWith(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: AppColors.darkInputFill,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.input),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.input),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.input),
+            borderSide: const BorderSide(
+              color: AppColors.orange400,
+              width: 1.5,
+            ),
+          ),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          hintStyle: _baseTextStyle.copyWith(
+            color: AppColors.darkTextTertiary,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        bottomSheetTheme: BottomSheetThemeData(
+          backgroundColor: AppColors.darkSurface,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(AppRadius.bottomSheet),
+            ),
+          ),
+          elevation: 0,
+        ),
+        dividerTheme: const DividerThemeData(
+          color: AppColors.darkDivider,
+          thickness: 1,
+          space: 1,
+        ),
+        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+          backgroundColor: AppColors.darkSurface,
+          elevation: 0,
+          selectedItemColor: AppColors.orange400,
+          unselectedItemColor: AppColors.darkTextTertiary,
+        ),
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: PawgoPageTransitionsBuilder(),
+            TargetPlatform.iOS: PawgoPageTransitionsBuilder(),
+            TargetPlatform.macOS: PawgoPageTransitionsBuilder(),
+            TargetPlatform.windows: PawgoPageTransitionsBuilder(),
+            TargetPlatform.linux: PawgoPageTransitionsBuilder(),
+          },
+        ),
+      );
 }
 
 /// Custom page transition: fadeIn + slideUp on push, fadeOut + slideDown on pop.
@@ -308,20 +491,48 @@ class PawgoPageTransitionsBuilder extends PageTransitionsBuilder {
     final reduceMotion = MediaQuery.of(context).accessibleNavigation;
     if (reduceMotion) return child;
 
-    // Push: fadeIn + slideUp (16px offset, 300ms easeOut)
+    const curve = Cubic(0.25, 0.1, 0.25, 1.0); // smooth ease
+
+    // Incoming page: fade + slide up
     final slideTween = Tween<Offset>(
-      begin: const Offset(0, 0.02), // ~16px relative offset
+      begin: const Offset(0, 0.04),
       end: Offset.zero,
-    ).chain(CurveTween(curve: Curves.easeOut));
+    ).chain(CurveTween(curve: curve));
 
-    final fadeTween = CurveTween(curve: Curves.easeOut);
+    final fadeTween = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).chain(CurveTween(curve: curve));
 
-    return SlideTransition(
-      position: animation.drive(slideTween),
-      child: FadeTransition(
-        opacity: animation.drive(fadeTween),
-        child: child,
+    // Outgoing page: subtle fade out
+    final secondaryFadeTween = Tween<double>(
+      begin: 1.0,
+      end: 0.92,
+    ).chain(CurveTween(curve: curve));
+
+    return FadeTransition(
+      opacity: secondaryAnimation.drive(secondaryFadeTween),
+      child: SlideTransition(
+        position: animation.drive(slideTween),
+        child: FadeTransition(
+          opacity: animation.drive(fadeTween),
+          child: child,
+        ),
       ),
     );
   }
+}
+
+/// Custom route with slower duration for smooth transitions.
+class PawgoPageRoute<T> extends MaterialPageRoute<T> {
+  PawgoPageRoute({
+    required super.builder,
+    super.settings,
+  });
+
+  @override
+  Duration get transitionDuration => const Duration(milliseconds: 500);
+
+  @override
+  Duration get reverseTransitionDuration => const Duration(milliseconds: 450);
 }
