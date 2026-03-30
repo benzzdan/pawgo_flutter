@@ -349,6 +349,37 @@ class Payment {
   }
 }
 
+class WalkLocation {
+  final int id;
+  final String bookingId;
+  final double latitude;
+  final double longitude;
+  final double? accuracy;
+  final DateTime recordedAt;
+
+  const WalkLocation({
+    required this.id,
+    required this.bookingId,
+    required this.latitude,
+    required this.longitude,
+    this.accuracy,
+    required this.recordedAt,
+  });
+
+  factory WalkLocation.fromJson(Map<String, dynamic> json) {
+    return WalkLocation(
+      id: json['id'] is int ? json['id'] as int : int.parse(json['id'].toString()),
+      bookingId: json['booking_id'] as String,
+      latitude: (json['latitude'] as num).toDouble(),
+      longitude: (json['longitude'] as num).toDouble(),
+      accuracy: json['accuracy'] != null
+          ? (json['accuracy'] as num).toDouble()
+          : null,
+      recordedAt: DateTime.parse(json['recorded_at'] as String),
+    );
+  }
+}
+
 class ChatMessage {
   final int id;
   final String sender;
