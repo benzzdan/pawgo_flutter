@@ -1,7 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:pawgo/theme/app_theme.dart';
-import 'package:pawgo/models/mock_data.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'package:pawgo/services/chat_service.dart';
+import 'package:pawgo/theme/app_theme.dart';
 
 class WalkerChatScreen extends StatefulWidget {
   const WalkerChatScreen({super.key});
@@ -11,20 +16,172 @@ class WalkerChatScreen extends StatefulWidget {
 }
 
 class _WalkerChatScreenState extends State<WalkerChatScreen> {
-  final _messageController = TextEditingController();
+  final _textController = TextEditingController();
+  final _scrollController = ScrollController();
   String _message = '';
+
+  late final ChatService _chatService;
+  StreamSubscription<Message>? _messageSub;
+  StreamSubscription<ChatConnectionState>? _connectionSub;
+
+  String? _bookingId;
+  String _otherPartyName = 'Chat';
+  String _bookingStatus = '';
+
+  final List<Message> _messages = [];
+  bool _isLoading = true;
+  String? _error;
+  bool _isSending = false;
+  ChatConnectionState _connectionState = ChatConnectionState.disconnected;
+
+  String get _currentUserId =>
+      Supabase.instance.client.auth.currentUser?.id ?? '';
+
+  /// Chat is only active when the booking walk has started.
+  bool get _isChatActive => _bookingStatus == 'walk_started';
+
+  @override
+  void initState() {
+    super.initState();
+    _chatService = ChatService();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_bookingId != null) return; // already initialised
+
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map<String, dynamic>) {
+      _bookingId = args['booking_id'] as String?;
+      _otherPartyName =
+          args['other_party_name'] as String? ?? 'Chat';
+    }
+
+    if (_bookingId != null) {
+      _loadMessages();
+      _subscribeToMessages();
+      _fetchBookingStatus();
+    } else {
+      setState(() {
+        _isLoading = false;
+        _error = 'No booking ID provided';
+      });
+    }
+  }
 
   @override
   void dispose() {
-    _messageController.dispose();
+    _messageSub?.cancel();
+    _connectionSub?.cancel();
+    _chatService.dispose();
+    _textController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  void _handleSend() {
-    if (_message.trim().isNotEmpty) {
-      _messageController.clear();
-      setState(() => _message = '');
+  Future<void> _loadMessages() async {
+    try {
+      final messages = await _chatService.fetchMessages(_bookingId!);
+      if (mounted) {
+        setState(() {
+          _messages
+            ..clear()
+            ..addAll(messages);
+          _isLoading = false;
+          _error = null;
+        });
+        _scrollToBottom();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = 'Failed to load messages. Tap to retry.';
+        });
+      }
     }
+  }
+
+  void _subscribeToMessages() {
+    _chatService.subscribe(_bookingId!);
+
+    _messageSub = _chatService.messageStream.listen((message) {
+      if (!mounted) return;
+      // Avoid duplicates (the sender already adds optimistically)
+      final exists = _messages.any((m) => m.id == message.id);
+      if (!exists) {
+        setState(() => _messages.add(message));
+        _scrollToBottom();
+      }
+    });
+
+    _connectionSub = _chatService.connectionStream.listen((state) {
+      if (mounted) setState(() => _connectionState = state);
+    });
+  }
+
+  Future<void> _fetchBookingStatus() async {
+    try {
+      final data = await Supabase.instance.client
+          .from('bookings')
+          .select('status')
+          .eq('id', _bookingId!)
+          .maybeSingle();
+      if (mounted && data != null) {
+        setState(() => _bookingStatus = data['status'] as String? ?? '');
+      }
+    } catch (_) {
+      // Non-critical — chat input state defaults to disabled.
+    }
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  Future<void> _handleSend() async {
+    final text = _message.trim();
+    if (text.isEmpty || _isSending || !_isChatActive) return;
+
+    _textController.clear();
+    setState(() {
+      _message = '';
+      _isSending = true;
+    });
+
+    try {
+      final sent = await _chatService.sendMessage(_bookingId!, text);
+      if (mounted) {
+        final exists = _messages.any((m) => m.id == sent.id);
+        if (!exists) {
+          setState(() => _messages.add(sent));
+        }
+        _scrollToBottom();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to send message')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
+  }
+
+  void _handleQuickAction(String text) {
+    _textController.text = text;
+    setState(() => _message = text);
+    _handleSend();
   }
 
   @override
@@ -34,16 +191,39 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header
             _buildHeader(),
-            // Messages
-            Expanded(child: _buildMessages()),
-            // Quick Actions
-            _buildQuickActions(),
-            // Input
-            _buildInput(),
+            if (_connectionState == ChatConnectionState.error ||
+                _connectionState == ChatConnectionState.disconnected)
+              _buildConnectionBanner(),
+            Expanded(child: _buildBody()),
+            if (!_isLoading && _error == null) _buildQuickActions(),
+            if (!_isLoading && _error == null) _buildInput(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildConnectionBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: AppColors.orange100,
+      child: Row(
+        children: [
+          Icon(Icons.wifi_off, size: 16, color: AppColors.orange500),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Reconnecting\u2026 Messages may be delayed.',
+              style: GoogleFonts.nunito(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.orange500,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -80,23 +260,33 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
                   ),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Center(
-                  child: Text('\u{1F469}', style: TextStyle(fontSize: 20)),
-                ),
-              ),
-              Positioned(
-                bottom: -2,
-                right: -2,
-                child: Container(
-                  width: 14,
-                  height: 14,
-                  decoration: BoxDecoration(
-                    color: AppColors.green500,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
+                child: Center(
+                  child: Text(
+                    _otherPartyName.isNotEmpty
+                        ? _otherPartyName[0].toUpperCase()
+                        : '?',
+                    style: GoogleFonts.nunito(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),
+              if (_isChatActive)
+                Positioned(
+                  bottom: -2,
+                  right: -2,
+                  child: Container(
+                    width: 14,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: AppColors.green500,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                  ),
+                ),
             ],
           ),
           const SizedBox(width: 12),
@@ -105,34 +295,35 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Sarah Johnson',
+                  _otherPartyName,
                   style: GoogleFonts.nunito(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                     color: AppColors.textPrimary,
                   ),
                 ),
-                Row(
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        color: AppColors.green500,
-                        shape: BoxShape.circle,
+                if (_isChatActive)
+                  Row(
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: const BoxDecoration(
+                          color: AppColors.green500,
+                          shape: BoxShape.circle,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Active now',
-                      style: GoogleFonts.nunito(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.green600,
+                      const SizedBox(width: 4),
+                      Text(
+                        'Active now',
+                        style: GoogleFonts.nunito(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.green600,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
               ],
             ),
           ),
@@ -154,45 +345,114 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
     );
   }
 
-  Widget _buildMessages() {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      children: [
-        // Date divider
-        Center(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.8),
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 4,
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(
+        child: GestureDetector(
+          onTap: () {
+            setState(() {
+              _isLoading = true;
+              _error = null;
+            });
+            _loadMessages();
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline,
+                  size: 48, color: AppColors.textTertiary),
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
                 ),
-              ],
-            ),
-            child: Text(
-              'Today, March 10',
-              style: GoogleFonts.nunito(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textSecondary,
               ),
-            ),
+              const SizedBox(height: 8),
+              Text(
+                'Tap to retry',
+                style: GoogleFonts.nunito(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.orange500,
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 16),
-        // Messages
-        ...MockData.chatMessages.map((msg) => Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: _MessageBubble(message: msg),
-            )),
-      ],
+      );
+    }
+
+    if (_messages.isEmpty) {
+      return Center(
+        child: Text(
+          'No messages yet.\nSay hello!',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.nunito(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textTertiary,
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      itemCount: _messages.length,
+      itemBuilder: (context, index) {
+        final msg = _messages[index];
+
+        // Status update messages → centered pill badge
+        if (msg.isStatusUpdate) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Center(
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  msg.content ?? '',
+                  style: GoogleFonts.nunito(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: _MessageBubble(
+            message: msg,
+            isCurrentUser: msg.senderId == _currentUserId,
+            otherPartyInitial: _otherPartyName.isNotEmpty
+                ? _otherPartyName[0].toUpperCase()
+                : '?',
+          ),
+        );
+      },
     );
   }
 
   Widget _buildQuickActions() {
+    if (!_isChatActive) return const SizedBox.shrink();
+
     final actions = [
       {
         'emoji': '\u{1F44D}',
@@ -201,10 +461,6 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
       {
         'emoji': '\u{2764}\u{FE0F}',
         'label': 'Great job!',
-      },
-      {
-        'emoji': '\u{1F4F8}',
-        'label': 'Send photo',
       },
     ];
 
@@ -215,32 +471,36 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
         children: actions
             .map((a) => Padding(
                   padding: const EdgeInsets.only(right: 8),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 4,
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Text(a['emoji']!, style: const TextStyle(fontSize: 14)),
-                        const SizedBox(width: 8),
-                        Text(
-                          a['label']!,
-                          style: GoogleFonts.nunito(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
+                  child: GestureDetector(
+                    onTap: () => _handleQuickAction(a['label']!),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 4,
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Text(a['emoji']!,
+                              style: const TextStyle(fontSize: 14)),
+                          const SizedBox(width: 8),
+                          Text(
+                            a['label']!,
+                            style: GoogleFonts.nunito(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ))
@@ -262,7 +522,8 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
               color: AppColors.surface,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.image, size: 18, color: AppColors.textSecondary),
+            child: const Icon(Icons.image,
+                size: 18, color: AppColors.textSecondary),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -276,11 +537,14 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
                 children: [
                   Expanded(
                     child: TextField(
-                      controller: _messageController,
+                      controller: _textController,
+                      enabled: _isChatActive,
                       onChanged: (val) => setState(() => _message = val),
                       onSubmitted: (_) => _handleSend(),
                       decoration: InputDecoration(
-                        hintText: 'Type a message...',
+                        hintText: _isChatActive
+                            ? 'Type a message...'
+                            : 'Chat available during active walks',
                         hintStyle: GoogleFonts.nunito(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
@@ -308,29 +572,31 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
           ),
           const SizedBox(width: 8),
           GestureDetector(
-            onTap: _handleSend,
+            onTap: _isChatActive ? _handleSend : null,
             child: Container(
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: _message.trim().isNotEmpty
+                color: _message.trim().isNotEmpty && _isChatActive
                     ? AppColors.orange500
                     : AppColors.surface,
                 borderRadius: BorderRadius.circular(12),
-                boxShadow: _message.trim().isNotEmpty
-                    ? [
-                        BoxShadow(
-                          color: AppColors.orange500.withValues(alpha: 0.3),
-                          blurRadius: 12,
-                          offset: const Offset(0, 2),
-                        ),
-                      ]
-                    : null,
+                boxShadow:
+                    _message.trim().isNotEmpty && _isChatActive
+                        ? [
+                            BoxShadow(
+                              color:
+                                  AppColors.orange500.withValues(alpha: 0.3),
+                              blurRadius: 12,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
+                        : null,
               ),
               child: Icon(
                 Icons.send,
                 size: 18,
-                color: _message.trim().isNotEmpty
+                color: _message.trim().isNotEmpty && _isChatActive
                     ? Colors.white
                     : const Color(0xFFCCCCCC),
               ),
@@ -343,19 +609,31 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
 }
 
 class _MessageBubble extends StatelessWidget {
-  final ChatMessage message;
+  final Message message;
+  final bool isCurrentUser;
+  final String otherPartyInitial;
 
-  const _MessageBubble({required this.message});
+  const _MessageBubble({
+    required this.message,
+    required this.isCurrentUser,
+    required this.otherPartyInitial,
+  });
 
-  bool get _isUser => message.sender == 'user';
+  String get _timeString {
+    return DateFormat.jm().format(message.createdAt.toLocal());
+  }
 
   @override
   Widget build(BuildContext context) {
+    final hasMedia =
+        message.mediaUrl != null && message.mediaType != 'status_update';
+
     return Row(
-      mainAxisAlignment: _isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+      mainAxisAlignment:
+          isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        if (!_isUser)
+        if (!isCurrentUser)
           Container(
             width: 32,
             height: 32,
@@ -367,23 +645,28 @@ class _MessageBubble extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Center(
-              child: Text(message.avatar, style: const TextStyle(fontSize: 14)),
+              child: Text(
+                otherPartyInitial,
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
             ),
           ),
         Flexible(
           child: Column(
-            crossAxisAlignment:
-                _isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            crossAxisAlignment: isCurrentUser
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
             children: [
-              if (message.hasImage)
+              if (hasMedia)
                 Container(
                   width: 220,
                   height: 180,
                   margin: const EdgeInsets.only(bottom: 4),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFA7F3D0), Color(0xFF6EE7B7)],
-                    ),
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
@@ -392,96 +675,68 @@ class _MessageBubble extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: Stack(
-                    children: [
-                      Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.camera_alt,
-                                size: 32,
-                                color: AppColors.green600.withValues(alpha: 0.5)),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Max playing at the park',
-                              style: GoogleFonts.nunito(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.green700,
-                              ),
-                            ),
-                          ],
-                        ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Image.network(
+                    message.mediaUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, e, st) => Container(
+                      color: AppColors.surface,
+                      child: const Center(
+                        child: Icon(Icons.broken_image,
+                            size: 32, color: AppColors.textTertiary),
                       ),
-                      Positioned(
-                        bottom: 8,
-                        right: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            message.time,
-                            style: GoogleFonts.nunito(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: _isUser ? AppColors.orange500 : AppColors.white,
-                  borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(16),
-                    topRight: const Radius.circular(16),
-                    bottomLeft: Radius.circular(_isUser ? 16 : 4),
-                    bottomRight: Radius.circular(_isUser ? 4 : 16),
-                  ),
-                  boxShadow: _isUser
-                      ? null
-                      : [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.05),
-                            blurRadius: 4,
-                          ),
-                        ],
-                ),
-                child: Text(
-                  message.text,
-                  style: GoogleFonts.nunito(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: _isUser ? Colors.white : AppColors.textPrimary,
-                    height: 1.4,
-                  ),
-                ),
-              ),
-              if (!message.hasImage)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    message.time,
-                    style: GoogleFonts.nunito(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textTertiary,
                     ),
                   ),
                 ),
+              if (message.content != null && message.content!.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color:
+                        isCurrentUser ? AppColors.orange500 : AppColors.white,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(16),
+                      topRight: const Radius.circular(16),
+                      bottomLeft: Radius.circular(isCurrentUser ? 16 : 4),
+                      bottomRight: Radius.circular(isCurrentUser ? 4 : 16),
+                    ),
+                    boxShadow: isCurrentUser
+                        ? null
+                        : [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 4,
+                            ),
+                          ],
+                  ),
+                  child: Text(
+                    message.content!,
+                    style: GoogleFonts.nunito(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: isCurrentUser
+                          ? Colors.white
+                          : AppColors.textPrimary,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  _timeString,
+                  style: GoogleFonts.nunito(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
-        if (_isUser)
+        if (isCurrentUser)
           Container(
             width: 32,
             height: 32,
@@ -493,7 +748,10 @@ class _MessageBubble extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Center(
-              child: Text(message.avatar, style: const TextStyle(fontSize: 14)),
+              child: Text(
+                '\u{1F464}',
+                style: const TextStyle(fontSize: 14),
+              ),
             ),
           ),
       ],
