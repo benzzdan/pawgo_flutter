@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -5,12 +6,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pawgo/config/env.dart';
 import 'package:pawgo/models/mock_data.dart';
+import 'package:pawgo/services/dog_service.dart';
 import 'package:pawgo/theme/app_theme.dart';
+import 'package:pawgo/widgets/celebration_overlay.dart';
 import 'package:pawgo/widgets/pawgo_bottom_sheet.dart';
 import 'package:pawgo/widgets/pawgo_button.dart';
 import 'package:pawgo/widgets/pawgo_card.dart';
+
+final _storageHeaders = {'apikey': Env.current.supabaseAnonKey};
 
 class MyDogsScreen extends StatefulWidget {
   const MyDogsScreen({super.key});
@@ -20,10 +25,39 @@ class MyDogsScreen extends StatefulWidget {
 }
 
 class _MyDogsScreenState extends State<MyDogsScreen> {
-  final List<Dog> _dogs = List.from(MockData.dogs);
+  List<Dog> _dogs = [];
   int? _lastAddedIndex;
   int? _removingIndex;
   bool _isRefreshing = false;
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDogs();
+  }
+
+  Future<void> _loadDogs() async {
+    try {
+      final dogs = await DogService.fetchDogs();
+      if (mounted) {
+        setState(() {
+          _dogs = dogs;
+          _isLoading = false;
+          _error = null;
+        });
+      }
+    } catch (e, st) {
+      developer.log('MyDogsScreen._loadDogs: ERROR $e\n$st', name: 'MyDogsScreen');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = 'Unable to load your dogs. Please try again.';
+        });
+      }
+    }
+  }
 
   void _showDeleteConfirmation(Dog dog, int index) {
     PawgoBottomSheet.show(
@@ -47,6 +81,7 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
               clipBehavior: Clip.antiAlias,
               child: Image.network(
                 dog.photoUrl!,
+                headers: _storageHeaders,
                 width: 80,
                 height: 80,
                 fit: BoxFit.cover,
@@ -129,8 +164,28 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
   }
 
   void _removeDogAnimated(int index) {
+    final dog = _dogs[index];
     setState(() => _removingIndex = index);
-    Future.delayed(const Duration(milliseconds: 250), () {
+    Future.delayed(const Duration(milliseconds: 250), () async {
+      try {
+        await DogService.deleteDog(dog.id);
+      } catch (e, st) {
+        developer.log('MyDogsScreen._removeDog: ERROR $e\n$st', name: 'MyDogsScreen');
+        if (mounted) {
+          setState(() => _removingIndex = null);
+          _loadDogs();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Something went wrong. Please try again.',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
+              ),
+              backgroundColor: const Color(0xFFEF4444),
+            ),
+          );
+          return;
+        }
+      }
       if (mounted) {
         setState(() {
           _dogs.removeAt(index);
@@ -142,14 +197,14 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
 
   Future<void> _onRefresh() async {
     setState(() => _isRefreshing = true);
-    // Simulate refresh delay
-    await Future.delayed(const Duration(milliseconds: 800));
+    await _loadDogs();
     if (mounted) {
       setState(() => _isRefreshing = false);
     }
   }
 
   void _showAddDogSheet() {
+    final wasEmpty = _dogs.isEmpty;
     PawgoBottomSheet.show(
       context: context,
       title: 'Add a Dog',
@@ -163,6 +218,37 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
           Future.delayed(const Duration(milliseconds: 500), () {
             if (mounted) setState(() => _lastAddedIndex = null);
           });
+          // Show celebration if this is the first dog
+          if (wasEmpty && mounted) {
+            Future.delayed(const Duration(milliseconds: 600), () {
+              if (mounted) {
+                CelebrationOverlay.show(
+                  context,
+                  title: 'Welcome to the Pack!',
+                  subtitle: '${dog.name} is ready for adventures',
+                  illustrationAsset: 'assets/illustrations/corgi_wagging.png',
+                );
+              }
+            });
+          }
+        },
+        onDismiss: () {
+          Navigator.of(sheetContext).pop();
+        },
+      ),
+    );
+  }
+
+  void _showEditDogSheet(Dog dog, int index) {
+    PawgoBottomSheet.show(
+      context: context,
+      title: 'Edit Dog',
+      builder: (sheetContext) => _EditDogForm(
+        dog: dog,
+        onDogUpdated: (updatedDog) {
+          setState(() {
+            _dogs[index] = updatedDog;
+          });
         },
         onDismiss: () {
           Navigator.of(sheetContext).pop();
@@ -174,13 +260,10 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
   Widget _buildEmptyState(BuildContext context) {
     final reduceMotion = MediaQuery.of(context).accessibleNavigation;
 
-    Widget illustration = ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: Image.asset(
-        'assets/illustrations/corgi_lying.png',
-        width: 150,
-        fit: BoxFit.contain,
-      ),
+    Widget illustration = Image.asset(
+      'assets/illustrations/corgi_lying.png',
+      width: 200,
+      fit: BoxFit.contain,
     );
 
     // Subtle floating idle animation (2px, 3s loop) unless reduce-motion
@@ -195,9 +278,8 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const SizedBox(height: 60),
           illustration,
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
           Text(
             'No pups yet',
             style: GoogleFonts.nunito(
@@ -242,8 +324,68 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
     return content;
   }
 
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.wifi_off, size: 48, color: AppColors.gray400),
+            const SizedBox(height: 16),
+            Text(
+              'Unable to load your dogs. Please try again.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.nunito(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  _isLoading = true;
+                  _error = null;
+                });
+                _loadDogs();
+              },
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.orange500,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'Retry',
+                  style: GoogleFonts.nunito(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.orange500),
+      );
+    }
+
+    if (_error != null) {
+      return _buildErrorState();
+    }
+
     if (_dogs.isEmpty) {
       return _buildEmptyState(context);
     }
@@ -251,10 +393,8 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
     return RefreshIndicator(
       onRefresh: _onRefresh,
       color: AppColors.orange500,
-      child: SingleChildScrollView(
+      child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Pull-to-refresh paw icon indicator
             if (_isRefreshing)
@@ -313,7 +453,7 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
                 child: _DogCard(
                   dog: dog,
                   onEdit: () {
-                    // TODO: edit dog
+                    _showEditDogSheet(dog, index);
                   },
                   onDelete: () {
                     _showDeleteConfirmation(dog, index);
@@ -369,14 +509,12 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
               child: PawgoButton(
                 label: 'Add a Dog',
                 icon: Icons.add,
-                variant: PawgoButtonVariant.secondary,
                 onPressed: _showAddDogSheet,
               ),
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 }
 
@@ -402,6 +540,7 @@ class _DogCard extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: Image.network(
           dog.photoUrl!,
+          headers: _storageHeaders,
           width: 64,
           height: 64,
           fit: BoxFit.cover,
@@ -455,7 +594,7 @@ class _DogCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  dog.breed,
+                  dog.displayBreed,
                   style: GoogleFonts.nunito(
                     fontSize: 14,
                     fontWeight: FontWeight.w400,
@@ -465,9 +604,9 @@ class _DogCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    _DetailChip(label: dog.age),
+                    _DetailChip(label: dog.displayAge),
                     const SizedBox(width: 8),
-                    _DetailChip(label: dog.weight),
+                    _DetailChip(label: dog.displayWeight),
                   ],
                 ),
               ],
@@ -609,80 +748,51 @@ class _AddDogFormState extends State<_AddDogForm> {
     }
   }
 
-  Future<String?> _uploadPhoto(int dogId) async {
-    if (_selectedImage == null) return null;
-
-    final supabase = Supabase.instance.client;
-    final userId = supabase.auth.currentUser?.id ?? 'anonymous';
-    final filePath = '$userId/$dogId.jpg';
-
-    try {
-      final bytes = await _selectedImage!.readAsBytes();
-      await supabase.storage.from('dog-photos').uploadBinary(
-            filePath,
-            bytes,
-            fileOptions: const FileOptions(
-              contentType: 'image/jpeg',
-              upsert: true,
-            ),
-          );
-      final publicUrl =
-          supabase.storage.from('dog-photos').getPublicUrl(filePath);
-      return publicUrl;
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isSaving = true);
 
-    final dogId = DateTime.now().millisecondsSinceEpoch;
-    String? photoUrl;
+    try {
+      final ageText = _ageController.text.trim();
+      final weightText = _weightController.text.trim();
+      final photoBytes =
+          _selectedImage != null ? await _selectedImage!.readAsBytes() : null;
 
-    if (_selectedImage != null) {
-      photoUrl = await _uploadPhoto(dogId);
-      if (photoUrl == null && mounted) {
+      final result = await DogService.addDog(
+        name: _nameController.text.trim(),
+        breed: _breedController.text.trim().isEmpty
+            ? null
+            : _breedController.text.trim(),
+        ageYears: ageText.isNotEmpty ? int.tryParse(ageText) : null,
+        weightKg: weightText.isNotEmpty ? double.tryParse(weightText) : null,
+        photoBytes: photoBytes,
+      );
+
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+          _showSuccessCorgi = true;
+        });
+        widget.onDogAdded(result.dog);
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted) {
+          widget.onDismiss();
+        }
+      }
+    } catch (e, st) {
+      developer.log('AddDogForm._submit: ERROR $e\n$st', name: 'MyDogsScreen');
+      if (mounted) {
+        setState(() => _isSaving = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Photo upload failed — saving dog without photo',
+              'Something went wrong. Please try again.',
               style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
             ),
-            backgroundColor: AppColors.orange500,
+            backgroundColor: const Color(0xFFEF4444),
           ),
         );
-      }
-    }
-
-    final dog = Dog(
-      id: dogId,
-      name: _nameController.text.trim(),
-      breed: _breedController.text.trim().isEmpty
-          ? 'Mixed'
-          : _breedController.text.trim(),
-      age: _ageController.text.trim().isEmpty
-          ? 'Unknown'
-          : _ageController.text.trim(),
-      weight: _weightController.text.trim().isEmpty
-          ? 'Unknown'
-          : _weightController.text.trim(),
-      image: '\u{1F436}',
-      photoUrl: photoUrl,
-    );
-
-    if (mounted) {
-      setState(() {
-        _isSaving = false;
-        _showSuccessCorgi = true;
-      });
-      widget.onDogAdded(dog);
-      // Brief delay to let user see the excited corgi before sheet closes
-      await Future.delayed(const Duration(milliseconds: 500));
-      if (mounted) {
-        widget.onDismiss();
       }
     }
   }
@@ -720,8 +830,8 @@ class _AddDogFormState extends State<_AddDogForm> {
     Widget picker = GestureDetector(
       onTap: _isSaving ? null : _pickImage,
       child: Container(
-        width: 96,
-        height: 96,
+        width: 120,
+        height: 120,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: AppColors.inputFill,
@@ -737,14 +847,14 @@ class _AddDogFormState extends State<_AddDogForm> {
             ? (kIsWeb
                 ? Image.network(
                     _selectedImage!.path,
-                    width: 96,
-                    height: 96,
+                    width: 120,
+                    height: 120,
                     fit: BoxFit.cover,
                   )
                 : Image.file(
                     File(_selectedImage!.path),
-                    width: 96,
-                    height: 96,
+                    width: 120,
+                    height: 120,
                     fit: BoxFit.cover,
                   ))
             : Column(
@@ -753,13 +863,13 @@ class _AddDogFormState extends State<_AddDogForm> {
                   Icon(
                     Icons.camera_alt_outlined,
                     color: AppColors.textTertiary,
-                    size: 28,
+                    size: 32,
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'Add Photo',
                     style: GoogleFonts.nunito(
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: AppColors.textTertiary,
                     ),
@@ -798,48 +908,6 @@ class _AddDogFormState extends State<_AddDogForm> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Corgi illustration header — swaps to excited corgi on success
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            switchInCurve: Curves.easeOut,
-            child: ClipRRect(
-              key: ValueKey<bool>(_showSuccessCorgi),
-              borderRadius: BorderRadius.circular(16),
-              child: Image.asset(
-                _showSuccessCorgi
-                    ? 'assets/illustrations/corgi_wagging.png'
-                    : 'assets/illustrations/corgi_sitting.png',
-                height: 100,
-                fit: BoxFit.contain,
-              ),
-            ),
-          )
-              .animate(
-                target: _showSuccessCorgi ? 1.0 : 0.0,
-              )
-              .scale(
-                begin: const Offset(1.0, 1.0),
-                end: const Offset(1.1, 1.1),
-                duration: 200.ms,
-                curve: Curves.easeOut,
-              )
-              .then()
-              .scale(
-                begin: const Offset(1.1, 1.1),
-                end: const Offset(1.0, 1.0),
-                duration: 200.ms,
-                curve: Curves.elasticOut,
-              )
-              .animate()
-              .fadeIn(duration: 300.ms, curve: Curves.easeOut)
-              .scale(
-                begin: const Offset(0.8, 0.8),
-                end: const Offset(1.0, 1.0),
-                duration: 300.ms,
-                curve: Curves.easeOut,
-              ),
-          const SizedBox(height: 16),
-
           // Circular photo picker
           _buildPhotoPicker()
               .animate()
@@ -856,6 +924,7 @@ class _AddDogFormState extends State<_AddDogForm> {
           // Name field (required) — stagger index 0
           TextFormField(
             controller: _nameController,
+            enabled: !_isSaving,
             decoration: _fieldDecoration('Name *'),
             validator: (value) {
               if (value == null || value.trim().isEmpty) {
@@ -879,6 +948,7 @@ class _AddDogFormState extends State<_AddDogForm> {
           // Breed field — stagger index 1
           TextFormField(
             controller: _breedController,
+            enabled: !_isSaving,
             decoration: _fieldDecoration('Breed'),
             textCapitalization: TextCapitalization.words,
           )
@@ -896,6 +966,7 @@ class _AddDogFormState extends State<_AddDogForm> {
           // Age field — stagger index 2
           TextFormField(
             controller: _ageController,
+            enabled: !_isSaving,
             decoration: _fieldDecoration('Age'),
           )
               .animate()
@@ -912,6 +983,7 @@ class _AddDogFormState extends State<_AddDogForm> {
           // Weight field — stagger index 3
           TextFormField(
             controller: _weightController,
+            enabled: !_isSaving,
             decoration: _fieldDecoration('Weight'),
           )
               .animate()
@@ -941,6 +1013,356 @@ class _AddDogFormState extends State<_AddDogForm> {
                 duration: 250.ms,
                 curve: Curves.easeOut,
               ),
+
+          // Bottom padding for keyboard
+          SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bottom-sheet form for editing an existing dog.
+class _EditDogForm extends StatefulWidget {
+  final Dog dog;
+  final ValueChanged<Dog> onDogUpdated;
+  final VoidCallback onDismiss;
+
+  const _EditDogForm({
+    required this.dog,
+    required this.onDogUpdated,
+    required this.onDismiss,
+  });
+
+  @override
+  State<_EditDogForm> createState() => _EditDogFormState();
+}
+
+class _EditDogFormState extends State<_EditDogForm> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nameController;
+  late final TextEditingController _breedController;
+  late final TextEditingController _ageController;
+  late final TextEditingController _weightController;
+  final _picker = ImagePicker();
+
+  XFile? _selectedImage;
+  bool _isSaving = false;
+  bool _justPickedPhoto = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.dog.name);
+    _breedController = TextEditingController(text: widget.dog.breed ?? '');
+    _ageController = TextEditingController(
+      text: widget.dog.ageYears?.toString() ?? '',
+    );
+    _weightController = TextEditingController(
+      text: widget.dog.weightKg?.toString() ?? '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _breedController.dispose();
+    _ageController.dispose();
+    _weightController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickImage() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: Text('Gallery',
+                  style: GoogleFonts.nunito(fontWeight: FontWeight.w600)),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: Text('Camera',
+                  style: GoogleFonts.nunito(fontWeight: FontWeight.w600)),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+
+    final picked = await _picker.pickImage(
+      source: source,
+      maxWidth: 800,
+      imageQuality: 80,
+    );
+    if (picked != null) {
+      setState(() {
+        _selectedImage = picked;
+        _justPickedPhoto = true;
+      });
+      Future.delayed(const Duration(milliseconds: 400), () {
+        if (mounted) setState(() => _justPickedPhoto = false);
+      });
+    }
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isSaving = true);
+
+    try {
+      final ageText = _ageController.text.trim();
+      final weightText = _weightController.text.trim();
+      final photoBytes =
+          _selectedImage != null ? await _selectedImage!.readAsBytes() : null;
+
+      final result = await DogService.updateDog(
+        dogId: widget.dog.id,
+        name: _nameController.text.trim(),
+        breed: _breedController.text.trim().isEmpty
+            ? null
+            : _breedController.text.trim(),
+        ageYears: ageText.isNotEmpty ? int.tryParse(ageText) : null,
+        weightKg: weightText.isNotEmpty ? double.tryParse(weightText) : null,
+        photoBytes: photoBytes,
+      );
+
+      if (mounted) {
+        setState(() => _isSaving = false);
+        widget.onDogUpdated(result.dog);
+        widget.onDismiss();
+      }
+    } catch (e, st) {
+      developer.log('EditDogForm._submit: ERROR $e\n$st', name: 'MyDogsScreen');
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Something went wrong. Please try again.',
+              style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: const Color(0xFFEF4444),
+          ),
+        );
+      }
+    }
+  }
+
+  InputDecoration _fieldDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: GoogleFonts.nunito(
+        fontWeight: FontWeight.w600,
+        color: AppColors.textTertiary,
+      ),
+      floatingLabelStyle: GoogleFonts.nunito(
+        fontWeight: FontWeight.w600,
+        color: AppColors.orange500,
+      ),
+      filled: true,
+      fillColor: AppColors.inputFill,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.input),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.input),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.input),
+        borderSide: const BorderSide(color: AppColors.orange400, width: 1.5),
+      ),
+      contentPadding: const EdgeInsets.all(16),
+    );
+  }
+
+  Widget _buildPhotoPicker() {
+    final hasExistingPhoto =
+        widget.dog.photoUrl != null && widget.dog.photoUrl!.isNotEmpty;
+
+    Widget picker = GestureDetector(
+      onTap: _isSaving ? null : _pickImage,
+      child: Container(
+        width: 96,
+        height: 96,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppColors.inputFill,
+          border: Border.all(
+            color: (_selectedImage != null || hasExistingPhoto)
+                ? AppColors.orange500
+                : AppColors.borderDashed,
+            width: 2,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: _selectedImage != null
+            ? (kIsWeb
+                ? Image.network(
+                    _selectedImage!.path,
+                    width: 96,
+                    height: 96,
+                    fit: BoxFit.cover,
+                  )
+                : Image.file(
+                    File(_selectedImage!.path),
+                    width: 96,
+                    height: 96,
+                    fit: BoxFit.cover,
+                  ))
+            : hasExistingPhoto
+                ? Image.network(
+                    widget.dog.photoUrl!,
+                    headers: _storageHeaders,
+                    width: 96,
+                    height: 96,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _photoPlaceholder(),
+                  )
+                : _photoPlaceholder(),
+      ),
+    );
+
+    if (_justPickedPhoto) {
+      picker = picker
+          .animate()
+          .scale(
+            begin: const Offset(1.0, 1.0),
+            end: const Offset(1.05, 1.05),
+            duration: 150.ms,
+            curve: Curves.easeOut,
+          )
+          .then()
+          .scale(
+            begin: const Offset(1.05, 1.05),
+            end: const Offset(1.0, 1.0),
+            duration: 150.ms,
+            curve: Curves.easeIn,
+          );
+    }
+
+    return picker;
+  }
+
+  Widget _photoPlaceholder() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          Icons.camera_alt_outlined,
+          color: AppColors.textTertiary,
+          size: 28,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Change',
+          style: GoogleFonts.nunito(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textTertiary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Form(
+      key: _formKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Photo picker showing current photo
+          _buildPhotoPicker()
+              .animate()
+              .fadeIn(duration: 250.ms, curve: Curves.easeOut)
+              .scale(
+                begin: const Offset(0.8, 0.8),
+                end: const Offset(1.0, 1.0),
+                duration: 250.ms,
+                curve: Curves.easeOut,
+              ),
+          const SizedBox(height: 20),
+
+          // Name field (required)
+          TextFormField(
+            controller: _nameController,
+            enabled: !_isSaving,
+            decoration: _fieldDecoration('Name *'),
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return 'Please enter your dog\'s name';
+              }
+              return null;
+            },
+            textCapitalization: TextCapitalization.words,
+          )
+              .animate()
+              .fadeIn(delay: 0.ms, duration: 250.ms, curve: Curves.easeOut)
+              .slideY(
+                  begin: 0.1, end: 0, delay: 0.ms, duration: 250.ms, curve: Curves.easeOut),
+          const SizedBox(height: 12),
+
+          // Breed field
+          TextFormField(
+            controller: _breedController,
+            enabled: !_isSaving,
+            decoration: _fieldDecoration('Breed'),
+            textCapitalization: TextCapitalization.words,
+          )
+              .animate()
+              .fadeIn(delay: 80.ms, duration: 250.ms, curve: Curves.easeOut)
+              .slideY(
+                  begin: 0.1, end: 0, delay: 80.ms, duration: 250.ms, curve: Curves.easeOut),
+          const SizedBox(height: 12),
+
+          // Age field
+          TextFormField(
+            controller: _ageController,
+            enabled: !_isSaving,
+            decoration: _fieldDecoration('Age (years)'),
+            keyboardType: TextInputType.number,
+          )
+              .animate()
+              .fadeIn(delay: 160.ms, duration: 250.ms, curve: Curves.easeOut)
+              .slideY(
+                  begin: 0.1, end: 0, delay: 160.ms, duration: 250.ms, curve: Curves.easeOut),
+          const SizedBox(height: 12),
+
+          // Weight field
+          TextFormField(
+            controller: _weightController,
+            enabled: !_isSaving,
+            decoration: _fieldDecoration('Weight (kg)'),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          )
+              .animate()
+              .fadeIn(delay: 240.ms, duration: 250.ms, curve: Curves.easeOut)
+              .slideY(
+                  begin: 0.1, end: 0, delay: 240.ms, duration: 250.ms, curve: Curves.easeOut),
+          const SizedBox(height: 24),
+
+          // Save button
+          PawgoButton(
+            label: _isSaving ? 'Saving...' : 'Save Changes',
+            onPressed: _isSaving ? null : _submit,
+            isLoading: _isSaving,
+            icon: _isSaving ? null : Icons.check,
+          )
+              .animate()
+              .fadeIn(delay: 320.ms, duration: 250.ms, curve: Curves.easeOut)
+              .slideY(
+                  begin: 0.1, end: 0, delay: 320.ms, duration: 250.ms, curve: Curves.easeOut),
 
           // Bottom padding for keyboard
           SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
