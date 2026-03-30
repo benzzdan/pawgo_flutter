@@ -9,6 +9,7 @@ import 'package:pawgo/screens/walker_profile_screen.dart';
 import 'package:pawgo/screens/active_walk_screen.dart';
 import 'package:pawgo/screens/walker_chat_screen.dart';
 import 'package:pawgo/screens/profile_screen.dart';
+import 'package:pawgo/screens/earnings_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,13 +36,24 @@ class PawgoApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.theme,
       initialRoute: '/',
-      routes: {
-        '/': (context) => const SignInScreen(),
-        '/home': (context) => const MainShell(),
-        '/walker': (context) => const WalkerProfileScreen(),
-        '/active-walk': (context) => const ActiveWalkScreen(),
-        '/chat': (context) => const WalkerChatScreen(),
-        '/profile': (context) => const ProfileScreen(),
+      onGenerateRoute: (settings) {
+        final routes = <String, WidgetBuilder>{
+          '/': (context) => const SignInScreen(),
+          '/home': (context) => const MainShell(),
+          '/walker': (context) => const WalkerProfileScreen(),
+          '/active-walk': (context) => const ActiveWalkScreen(),
+          '/chat': (context) => const WalkerChatScreen(),
+          '/profile': (context) => const ProfileScreen(),
+          '/earnings': (context) => const EarningsScreen(),
+        };
+        final builder = routes[settings.name];
+        if (builder != null) {
+          return PawgoPageRoute(
+            builder: builder,
+            settings: settings,
+          );
+        }
+        return null;
       },
     );
   }

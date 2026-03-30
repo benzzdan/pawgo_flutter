@@ -267,6 +267,88 @@ class Booking {
   String get displayPrice => '\$${totalPriceMxn.toStringAsFixed(0)} MXN';
 }
 
+class Payment {
+  final String id;
+  final String bookingId;
+  final double amountMxn;
+  final String status;
+  final String? paymentMethod;
+  final String? externalId;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+
+  // Joined fields from bookings
+  final String? dogName;
+  final String? ownerName;
+  final DateTime? scheduledAt;
+  final double? commissionMxn;
+
+  const Payment({
+    required this.id,
+    required this.bookingId,
+    this.amountMxn = 0,
+    this.status = 'pending',
+    this.paymentMethod,
+    this.externalId,
+    this.createdAt,
+    this.updatedAt,
+    this.dogName,
+    this.ownerName,
+    this.scheduledAt,
+    this.commissionMxn,
+  });
+
+  factory Payment.fromJson(Map<String, dynamic> json) {
+    final booking = json['bookings'] as Map<String, dynamic>?;
+    final dog = booking?['dogs'] as Map<String, dynamic>?;
+    final owner = booking?['users'] as Map<String, dynamic>?;
+    return Payment(
+      id: json['id'] as String,
+      bookingId: json['booking_id'] as String,
+      amountMxn: (json['amount_mxn'] as num?)?.toDouble() ?? 0,
+      status: json['status'] as String? ?? 'pending',
+      paymentMethod: json['payment_method'] as String?,
+      externalId: json['external_id'] as String?,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'] as String)
+          : null,
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'] as String)
+          : null,
+      dogName: dog?['name'] as String?,
+      ownerName: owner?['full_name'] as String?,
+      scheduledAt: booking?['scheduled_at'] != null
+          ? DateTime.parse(booking!['scheduled_at'] as String)
+          : null,
+      commissionMxn:
+          (booking?['commission_mxn'] as num?)?.toDouble(),
+    );
+  }
+
+  bool get isCompleted => status == 'completed';
+
+  /// Walker earnings = amount - commission
+  double get walkerEarnings =>
+      commissionMxn != null ? amountMxn - commissionMxn! : amountMxn;
+
+  String get displayAmount => '\$${amountMxn.toStringAsFixed(0)} MXN';
+  String get displayEarnings => '\$${walkerEarnings.toStringAsFixed(0)} MXN';
+  String get displayStatus {
+    switch (status) {
+      case 'completed':
+        return 'Paid';
+      case 'pending':
+        return 'Pending';
+      case 'failed':
+        return 'Failed';
+      case 'refunded':
+        return 'Refunded';
+      default:
+        return status;
+    }
+  }
+}
+
 class ChatMessage {
   final int id;
   final String sender;
