@@ -5,13 +5,19 @@ import 'package:flutter/material.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/models/mock_data.dart';
 import 'package:pawgo/services/tracking_service.dart';
+import 'package:pawgo/services/booking_status_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class ActiveWalkScreen extends StatefulWidget {
-  const ActiveWalkScreen({super.key, this.trackingService});
+  const ActiveWalkScreen({
+    super.key,
+    this.trackingService,
+    this.bookingStatusService,
+  });
 
   /// Optional injected service for testing.
   final TrackingService? trackingService;
+  final BookingStatusService? bookingStatusService;
 
   @override
   State<ActiveWalkScreen> createState() => _ActiveWalkScreenState();
@@ -25,6 +31,10 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
   late TrackingService _trackingService;
   StreamSubscription<WalkLocation>? _locationSub;
   StreamSubscription<TrackingConnectionState>? _connectionSub;
+
+  late BookingStatusService _bookingStatusService;
+  StreamSubscription<BookingStatusUpdate>? _bookingStatusSub;
+  String _bookingStatus = 'walk_started';
 
   final List<WalkLocation> _locations = [];
   WalkLocation? _latestLocation;
@@ -45,6 +55,8 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
   void initState() {
     super.initState();
     _trackingService = widget.trackingService ?? TrackingService();
+    _bookingStatusService =
+        widget.bookingStatusService ?? BookingStatusService();
 
     _timer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) setState(() => _elapsedTime++);
@@ -114,6 +126,22 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
 
     // Subscribe to live updates
     _trackingService.subscribe(bookingId);
+
+    // Subscribe to booking status changes
+    _bookingStatusSub =
+        _bookingStatusService.statusStream.listen((update) {
+      if (mounted) {
+        _log('Booking status changed to: ${update.newStatus}');
+        setState(() => _bookingStatus = update.newStatus);
+        if (update.newStatus == 'walk_completed') {
+          // Walk completed — show a brief message, then navigate back
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Walk completed!')),
+          );
+        }
+      }
+    });
+    _bookingStatusService.subscribeToBooking(bookingId);
   }
 
   @override
@@ -121,7 +149,9 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
     _timer?.cancel();
     _locationSub?.cancel();
     _connectionSub?.cancel();
+    _bookingStatusSub?.cancel();
     _trackingService.dispose();
+    _bookingStatusService.dispose();
     super.dispose();
   }
 
@@ -188,11 +218,15 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Live tracking',
+                        _bookingStatus == 'walk_completed'
+                            ? 'Walk completed'
+                            : 'Live tracking',
                         style: GoogleFonts.nunito(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.textSecondary,
+                          color: _bookingStatus == 'walk_completed'
+                              ? AppColors.green600
+                              : AppColors.textSecondary,
                         ),
                       ),
                     ],

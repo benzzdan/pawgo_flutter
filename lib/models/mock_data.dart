@@ -265,6 +265,33 @@ class Booking {
 
   /// Formatted price string.
   String get displayPrice => '\$${totalPriceMxn.toStringAsFixed(0)} MXN';
+
+  /// Returns a copy with updated fields.
+  Booking copyWith({
+    String? status,
+    DateTime? startedAt,
+    DateTime? completedAt,
+  }) {
+    return Booking(
+      id: id,
+      ownerId: ownerId,
+      walkerId: walkerId,
+      dogId: dogId,
+      status: status ?? this.status,
+      scheduledAt: scheduledAt,
+      startedAt: startedAt ?? this.startedAt,
+      completedAt: completedAt ?? this.completedAt,
+      durationMinutes: durationMinutes,
+      totalPriceMxn: totalPriceMxn,
+      commissionMxn: commissionMxn,
+      notes: notes,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      walkerName: walkerName,
+      walkerAvatarUrl: walkerAvatarUrl,
+      dogName: dogName,
+    );
+  }
 }
 
 class Payment {

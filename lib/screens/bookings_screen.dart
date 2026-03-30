@@ -1,14 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:pawgo/models/mock_data.dart';
 import 'package:pawgo/services/booking_service.dart';
+import 'package:pawgo/services/booking_status_service.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/widgets/pawgo_button.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class BookingsScreen extends StatefulWidget {
-  const BookingsScreen({super.key});
+  const BookingsScreen({super.key, this.bookingStatusService});
+
+  /// Optional injected service for testing.
+  final BookingStatusService? bookingStatusService;
 
   @override
   State<BookingsScreen> createState() => _BookingsScreenState();
@@ -17,16 +24,77 @@ class BookingsScreen extends StatefulWidget {
 class _BookingsScreenState extends State<BookingsScreen> {
   String _selectedTab = 'upcoming';
   late Future<List<Booking>> _bookingsFuture;
+  List<Booking> _bookings = [];
+
+  late BookingStatusService _statusService;
+  StreamSubscription<BookingStatusUpdate>? _statusSub;
+  StreamSubscription<BookingStatusConnectionState>? _connectionSub;
+  BookingStatusConnectionState _connectionState =
+      BookingStatusConnectionState.disconnected;
 
   @override
   void initState() {
     super.initState();
-    _bookingsFuture = BookingService.fetchBookings();
+    _statusService = widget.bookingStatusService ?? BookingStatusService();
+    _bookingsFuture = _fetchAndSubscribe();
+  }
+
+  Future<List<Booking>> _fetchAndSubscribe() async {
+    final bookings = await BookingService.fetchBookings();
+    if (mounted) {
+      setState(() {
+        _bookings = bookings;
+      });
+      _subscribeToStatusChanges();
+    }
+    return bookings;
+  }
+
+  void _subscribeToStatusChanges() {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    _statusSub = _statusService.statusStream.listen((update) {
+      if (!mounted) return;
+      setState(() {
+        _bookings = _bookings.map((b) {
+          if (b.id == update.bookingId) {
+            return b.copyWith(
+              status: update.newStatus,
+              startedAt: update.startedAt != null
+                  ? DateTime.tryParse(update.startedAt!)
+                  : null,
+              completedAt: update.completedAt != null
+                  ? DateTime.tryParse(update.completedAt!)
+                  : null,
+            );
+          }
+          return b;
+        }).toList();
+      });
+    });
+
+    _connectionSub = _statusService.connectionStream.listen((state) {
+      if (mounted) setState(() => _connectionState = state);
+    });
+
+    _statusService.subscribe(
+      filterColumn: 'owner_id',
+      filterValue: userId,
+    );
+  }
+
+  @override
+  void dispose() {
+    _statusSub?.cancel();
+    _connectionSub?.cancel();
+    _statusService.dispose();
+    super.dispose();
   }
 
   void _retry() {
     setState(() {
-      _bookingsFuture = BookingService.fetchBookings();
+      _bookingsFuture = _fetchAndSubscribe();
     });
   }
 
@@ -156,11 +224,63 @@ class _BookingsScreenState extends State<BookingsScreen> {
     );
   }
 
+  Widget _buildConnectionBanner() {
+    if (_connectionState == BookingStatusConnectionState.connected ||
+        _connectionState == BookingStatusConnectionState.connecting) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: _connectionState == BookingStatusConnectionState.error
+          ? const Color(0xFFFEF2F2)
+          : const Color(0xFFFFFBEB),
+      child: Row(
+        children: [
+          Icon(
+            _connectionState == BookingStatusConnectionState.error
+                ? Icons.error_outline
+                : Icons.wifi_off,
+            size: 16,
+            color: _connectionState == BookingStatusConnectionState.error
+                ? const Color(0xFFDC2626)
+                : const Color(0xFFF59E0B),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Live updates unavailable. Tap to refresh.',
+              style: GoogleFonts.nunito(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _connectionState == BookingStatusConnectionState.error
+                    ? const Color(0xFFDC2626)
+                    : const Color(0xFFF59E0B),
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: _retry,
+            child: Icon(
+              Icons.refresh,
+              size: 18,
+              color: _connectionState == BookingStatusConnectionState.error
+                  ? const Color(0xFFDC2626)
+                  : const Color(0xFFF59E0B),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Connection banner
+        _buildConnectionBanner(),
         // Header
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 10, 24, 20),
@@ -225,8 +345,8 @@ class _BookingsScreenState extends State<BookingsScreen> {
               if (snapshot.hasError) {
                 return _buildErrorState(snapshot.error!);
               }
-              final allBookings = snapshot.data ?? [];
-              final filtered = _filterBookings(allBookings);
+              // Use the live _bookings list (updated by Realtime)
+              final filtered = _filterBookings(_bookings);
               if (filtered.isEmpty) {
                 return _buildEmptyState(context);
               }
