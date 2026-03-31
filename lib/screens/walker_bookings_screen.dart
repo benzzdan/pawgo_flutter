@@ -20,6 +20,23 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
   String? _error;
   String? _walkerId;
   RealtimeChannel? _bookingChannel;
+  int _selectedTab = 0; // 0=Upcoming, 1=Active, 2=Completed
+
+  static const _upcomingStatuses = ['confirmed', 'walker_en_route'];
+  static const _activeStatuses = ['walk_started'];
+  static const _completedStatuses = ['walk_completed'];
+
+  List<Map<String, dynamic>> get _filteredBookings {
+    final statuses = switch (_selectedTab) {
+      0 => _upcomingStatuses,
+      1 => _activeStatuses,
+      2 => _completedStatuses,
+      _ => _upcomingStatuses,
+    };
+    return _bookings
+        .where((b) => statuses.contains(b['status']))
+        .toList();
+  }
 
   @override
   void initState() {
@@ -64,12 +81,12 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
 
       _walkerId = walkerRes['id'] as String;
 
-      // Fetch bookings assigned to this walker with relevant statuses
+      // Fetch all bookings assigned to this walker
       final bookings = await withRetry(() => _supabase
           .from('bookings')
           .select('*, dogs(name, breed), users!bookings_owner_id_fkey(full_name, avatar_url)')
           .eq('walker_id', _walkerId!)
-          .inFilter('status', ['confirmed', 'walker_en_route', 'walk_started'])
+          .inFilter('status', ['confirmed', 'walker_en_route', 'walk_started', 'walk_completed'])
           .order('scheduled_at', ascending: true));
 
       setState(() {
@@ -116,8 +133,8 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
               final idx = _bookings.indexWhere((b) => b['id'] == updated['id']);
               if (idx >= 0) {
                 final status = updated['status'] as String?;
-                // Remove bookings that are no longer active
-                if (status == 'walk_completed' || status == 'cancelled') {
+                // Remove cancelled bookings
+                if (status == 'cancelled') {
                   _bookings.removeAt(idx);
                 } else {
                   // Preserve joined data, update booking fields
@@ -287,18 +304,59 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
           ? const Center(child: CircularProgressIndicator(color: AppColors.orange500))
           : _error != null
               ? _buildErrorState()
-              : _bookings.isEmpty
-                  ? _buildEmptyState()
-                  : RefreshIndicator(
-                      onRefresh: _loadWalkerBookings,
-                      color: AppColors.orange500,
-                      child: ListView.separated(
-                        padding: const EdgeInsets.all(24),
-                        itemCount: _bookings.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 16),
-                        itemBuilder: (context, index) => _buildBookingCard(_bookings[index]),
-                      ),
+              : Column(
+                  children: [
+                    _buildFilterTabs(),
+                    Expanded(
+                      child: _filteredBookings.isEmpty
+                          ? _buildEmptyState()
+                          : RefreshIndicator(
+                              onRefresh: _loadWalkerBookings,
+                              color: AppColors.orange500,
+                              child: ListView.separated(
+                                padding: const EdgeInsets.all(24),
+                                itemCount: _filteredBookings.length,
+                                separatorBuilder: (_, __) => const SizedBox(height: 16),
+                                itemBuilder: (context, index) => _buildBookingCard(_filteredBookings[index]),
+                              ),
+                            ),
                     ),
+                  ],
+                ),
+    );
+  }
+
+  Widget _buildFilterTabs() {
+    final tabs = ['Upcoming', 'Active', 'Completed'];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+      child: Row(
+        children: List.generate(tabs.length, (index) {
+          final isSelected = _selectedTab == index;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _selectedTab = index),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: isSelected ? AppColors.cacaoBrown : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(
+                    tabs[index],
+                    style: GoogleFonts.nunito(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: isSelected ? Colors.white : AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
     );
   }
 
@@ -338,7 +396,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
             Icon(Icons.directions_walk, size: 64, color: AppColors.textSecondary.withValues(alpha: 0.5)),
             const SizedBox(height: 16),
             Text(
-              'No Active Bookings',
+              _selectedTab == 2 ? 'No Completed Walks' : 'No Walks Assigned Yet',
               style: GoogleFonts.nunito(
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
@@ -347,7 +405,11 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'You don\'t have any confirmed or active walks right now.',
+              _selectedTab == 0
+                  ? 'You don\'t have any upcoming walks right now.'
+                  : _selectedTab == 1
+                      ? 'No walks are currently in progress.'
+                      : 'You haven\'t completed any walks yet.',
               textAlign: TextAlign.center,
               style: GoogleFonts.nunito(fontSize: 15, color: AppColors.textSecondary),
             ),
