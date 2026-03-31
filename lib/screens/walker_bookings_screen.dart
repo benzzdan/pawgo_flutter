@@ -5,6 +5,7 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:pawgo/services/gps_broadcast_service.dart';
 
 class WalkerBookingsScreen extends StatefulWidget {
   const WalkerBookingsScreen({super.key});
@@ -21,6 +22,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
   String? _walkerId;
   RealtimeChannel? _bookingChannel;
   int _selectedTab = 0; // 0=Upcoming, 1=Active, 2=Completed
+  String? _startingWalkId; // Booking ID currently being started (loading state)
 
   static const _upcomingStatuses = ['confirmed', 'walker_en_route'];
   static const _activeStatuses = ['walk_started'];
@@ -153,6 +155,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
   }
 
   Future<void> _startWalk(String bookingId) async {
+    setState(() => _startingWalkId = bookingId);
     try {
       final res = await withRetry(() => _supabase.functions.invoke(
         'start-walk',
@@ -161,6 +164,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
 
       if (!mounted) return;
       if (res.status != 200) {
+        setState(() => _startingWalkId = null);
         ErrorHandler.instance.handleFunctionError(
           context,
           res,
@@ -169,9 +173,34 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
         );
       } else {
         AnalyticsService.instance.walkStarted(bookingId: bookingId);
+
+        // Start GPS broadcasting
+        await GpsBroadcastService.instance.startBroadcasting(bookingId);
+
+        if (!mounted) return;
+        setState(() => _startingWalkId = null);
+
+        // Get walker and dog names for route args
+        final booking = _bookings.firstWhere(
+          (b) => b['id'] == bookingId,
+          orElse: () => <String, dynamic>{},
+        );
+        final currentUser = _supabase.auth.currentUser;
+        final walkerName = currentUser?.userMetadata?['full_name'] as String?
+            ?? booking['users']?['full_name'] as String?
+            ?? 'Walker';
+        final dogName = booking['dogs']?['name'] as String? ?? 'Dog';
+
+        // Navigate to active walk screen
+        Navigator.pushNamed(context, '/active-walk', arguments: {
+          'booking_id': bookingId,
+          'walker_name': walkerName,
+          'dog_name': dogName,
+        });
       }
     } catch (e) {
       if (!mounted) return;
+      setState(() => _startingWalkId = null);
       ErrorHandler.instance.handleError(
         context,
         e,
@@ -577,21 +606,30 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
   }
 
   Widget _buildActionButtons(String bookingId, String status) {
-    if (status == 'confirmed') {
+    final isStarting = _startingWalkId == bookingId;
+
+    if (status == 'confirmed' || status == 'walker_en_route') {
       return Row(
         children: [
           Expanded(
             child: SizedBox(
               height: 48,
               child: ElevatedButton.icon(
-                onPressed: () => _startWalk(bookingId),
-                icon: const Icon(Icons.play_arrow, color: Colors.white),
+                onPressed: isStarting ? null : () => _startWalk(bookingId),
+                icon: isStarting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.play_arrow, color: Colors.white),
                 label: Text(
-                  'Start Walk',
+                  isStarting ? 'Starting...' : 'Start Walk',
                   style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.green600,
+                  disabledBackgroundColor: AppColors.green600.withValues(alpha: 0.7),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   elevation: 2,
                 ),
@@ -677,26 +715,8 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
         ],
       );
     } else {
-      // walker_en_route or other transitional states
-      return SizedBox(
-        height: 48,
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: null,
-          icon: const SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textSecondary),
-          ),
-          label: Text(
-            'Updating...',
-            style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w700),
-          ),
-          style: ElevatedButton.styleFrom(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-      );
+      // walk_completed or other states — no action buttons
+      return const SizedBox.shrink();
     }
   }
 }
