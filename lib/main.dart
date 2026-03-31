@@ -11,6 +11,7 @@ import 'package:pawgo/screens/walker_chat_screen.dart';
 import 'package:pawgo/screens/profile_screen.dart';
 import 'package:pawgo/screens/earnings_screen.dart';
 import 'package:pawgo/services/theme_service.dart';
+import 'package:pawgo/services/auth_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +25,7 @@ void main() async {
     url: Env.current.supabaseUrl,
     anonKey: Env.current.supabaseAnonKey,
   );
+  AuthService.instance.initialize();
   await ThemeService.instance.initialize();
   runApp(const PawgoApp());
 }
@@ -37,6 +39,7 @@ class PawgoApp extends StatelessWidget {
       valueListenable: ThemeService.instance.themeMode,
       builder: (context, themeMode, _) {
         return MaterialApp(
+          navigatorKey: AuthService.instance.navigatorKey,
           title: 'Pawgo',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.theme,
