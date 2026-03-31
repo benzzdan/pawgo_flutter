@@ -499,15 +499,46 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
       itemCount: _messages.length,
       itemBuilder: (context, index) {
         final msg = _messages[index];
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: _MessageBubble(
-            message: msg,
-            isCurrentUser: msg['sender_id'] == _currentUserId,
-          ),
+        final showDateSeparator = _shouldShowDateSeparator(index);
+        return Column(
+          children: [
+            if (showDateSeparator)
+              _DateSeparator(dateStr: _dateLabelFor(msg['created_at'])),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: _MessageBubble(
+                message: msg,
+                isCurrentUser: msg['sender_id'] == _currentUserId,
+              ),
+            ),
+          ],
         );
       },
     );
+  }
+
+  bool _shouldShowDateSeparator(int index) {
+    if (index == 0) return true;
+    final current = DateTime.tryParse(_messages[index]['created_at']?.toString() ?? '');
+    final previous = DateTime.tryParse(_messages[index - 1]['created_at']?.toString() ?? '');
+    if (current == null || previous == null) return false;
+    final c = current.toLocal();
+    final p = previous.toLocal();
+    return c.year != p.year || c.month != p.month || c.day != p.day;
+  }
+
+  String _dateLabelFor(dynamic createdAt) {
+    if (createdAt == null) return '';
+    final dt = DateTime.tryParse(createdAt.toString())?.toLocal();
+    if (dt == null) return '';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final messageDay = DateTime(dt.year, dt.month, dt.day);
+    final diff = today.difference(messageDay).inDays;
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Yesterday';
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${months[dt.month - 1]} ${dt.day}';
   }
 
   Widget _buildQuickActions() {
@@ -954,6 +985,39 @@ class _MessageBubble extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _DateSeparator extends StatelessWidget {
+  final String dateStr;
+  const _DateSeparator({required this.dateStr});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(height: 1, color: AppColors.textTertiary.withValues(alpha: 0.3)),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              dateStr,
+              style: GoogleFonts.nunito(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textTertiary,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Container(height: 1, color: AppColors.textTertiary.withValues(alpha: 0.3)),
+          ),
+        ],
       ),
     );
   }
