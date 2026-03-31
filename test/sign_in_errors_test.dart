@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pawgo/screens/sign_in_screen.dart';
 
 void main() {
   group('SignInScreen._friendlyAuthError', () {
