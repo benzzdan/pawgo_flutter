@@ -10,6 +10,7 @@ import 'package:pawgo/screens/active_walk_screen.dart';
 import 'package:pawgo/screens/walker_chat_screen.dart';
 import 'package:pawgo/screens/profile_screen.dart';
 import 'package:pawgo/screens/earnings_screen.dart';
+import 'package:pawgo/services/theme_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +24,7 @@ void main() async {
     url: Env.current.supabaseUrl,
     anonKey: Env.current.supabaseAnonKey,
   );
+  await ThemeService.instance.initialize();
   runApp(const PawgoApp());
 }
 
@@ -31,31 +33,36 @@ class PawgoApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Pawgo',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.theme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
-      initialRoute: '/',
-      onGenerateRoute: (settings) {
-        final routes = <String, WidgetBuilder>{
-          '/': (context) => const SignInScreen(),
-          '/home': (context) => const MainShell(),
-          '/walker': (context) => const WalkerProfileScreen(),
-          '/active-walk': (context) => const ActiveWalkScreen(),
-          '/chat': (context) => const WalkerChatScreen(),
-          '/profile': (context) => const ProfileScreen(),
-          '/earnings': (context) => const EarningsScreen(),
-        };
-        final builder = routes[settings.name];
-        if (builder != null) {
-          return PawgoPageRoute(
-            builder: builder,
-            settings: settings,
-          );
-        }
-        return null;
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeService.instance.themeMode,
+      builder: (context, themeMode, _) {
+        return MaterialApp(
+          title: 'Pawgo',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.theme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: themeMode,
+          initialRoute: '/',
+          onGenerateRoute: (settings) {
+            final routes = <String, WidgetBuilder>{
+              '/': (context) => const SignInScreen(),
+              '/home': (context) => const MainShell(),
+              '/walker': (context) => const WalkerProfileScreen(),
+              '/active-walk': (context) => const ActiveWalkScreen(),
+              '/chat': (context) => const WalkerChatScreen(),
+              '/profile': (context) => const ProfileScreen(),
+              '/earnings': (context) => const EarningsScreen(),
+            };
+            final builder = routes[settings.name];
+            if (builder != null) {
+              return PawgoPageRoute(
+                builder: builder,
+                settings: settings,
+              );
+            }
+            return null;
+          },
+        );
       },
     );
   }

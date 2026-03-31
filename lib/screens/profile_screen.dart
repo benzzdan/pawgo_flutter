@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/models/mock_data.dart';
+import 'package:pawgo/services/theme_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -348,12 +349,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'label': 'Payment Methods',
       },
       {
-        'icon': Icons.settings,
-        'color': AppColors.purple600,
-        'bgColor': AppColors.purple50,
-        'label': 'App Settings',
-      },
-      {
         'icon': Icons.help_outline,
         'color': AppColors.orange500,
         'bgColor': AppColors.orange50,
@@ -373,54 +368,131 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
       child: Column(
-        children: items.asMap().entries.map((entry) {
-          final index = entry.key;
-          final item = entry.value;
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            decoration: BoxDecoration(
-              border: index < items.length - 1
-                  ? const Border(
-                      bottom: BorderSide(color: AppColors.surface),
-                    )
-                  : null,
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: item['bgColor'] as Color,
-                    borderRadius: BorderRadius.circular(12),
+        children: [
+          // Dark Mode toggle row
+          _buildDarkModeToggleRow(),
+          const Divider(height: 1, color: AppColors.surface),
+          // Other settings items
+          ...items.asMap().entries.map((entry) {
+            final index = entry.key;
+            final item = entry.value;
+            return Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              decoration: BoxDecoration(
+                border: index < items.length - 1
+                    ? const Border(
+                        bottom: BorderSide(color: AppColors.surface),
+                      )
+                    : null,
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: item['bgColor'] as Color,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(item['icon'] as IconData,
+                        size: 18, color: item['color'] as Color),
                   ),
-                  child: Icon(item['icon'] as IconData,
-                      size: 18, color: item['color'] as Color),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    item['label'] as String,
-                    style: GoogleFonts.nunito(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      item['label'] as String,
+                      style: GoogleFonts.nunito(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                   ),
-                ),
-                Text(
-                  '\u{203A}',
-                  style: GoogleFonts.nunito(
-                    fontSize: 20,
-                    color: AppColors.textTertiary,
+                  Text(
+                    '\u{203A}',
+                    style: GoogleFonts.nunito(
+                      fontSize: 20,
+                      color: AppColors.textTertiary,
+                    ),
                   ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
+                ],
+              ),
+            );
+          }),
+        ],
       ),
     );
+  }
+
+  Widget _buildDarkModeToggleRow() {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeService.instance.themeMode,
+      builder: (context, mode, _) {
+        final isDark = mode == ThemeMode.dark;
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.purple50,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  isDark ? Icons.dark_mode : Icons.light_mode,
+                  size: 18,
+                  color: AppColors.purple600,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Dark Mode',
+                      style: GoogleFonts.nunito(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      _themeModeLabel(mode),
+                      style: GoogleFonts.nunito(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch.adaptive(
+                value: isDark,
+                activeTrackColor: AppColors.orange500,
+                activeThumbColor: Colors.white,
+                onChanged: (on) {
+                  ThemeService.instance
+                      .setThemeMode(on ? ThemeMode.dark : ThemeMode.light);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  String _themeModeLabel(ThemeMode mode) {
+    return switch (mode) {
+      ThemeMode.system => 'System default',
+      ThemeMode.light => 'Light',
+      ThemeMode.dark => 'Dark',
+    };
   }
 
   Widget _buildLogout() {
