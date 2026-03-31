@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:pawgo/services/role_service.dart';
 
 class WalkerChatScreen extends StatefulWidget {
   const WalkerChatScreen({super.key});
@@ -403,7 +404,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
                   ? const Center(child: CircularProgressIndicator())
                   : _buildMessages(),
             ),
-            if (_isChatActive) _buildQuickActions(),
+            if (_isChatActive && RoleService.instance.activeRole.value == 'walker') _buildQuickActions(),
             _isChatActive ? _buildInput() : _buildDisabledInput(),
           ],
         ),
@@ -514,7 +515,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
       {'icon': Icons.pets, 'label': 'Pee break', 'status': 'Pee break completed'},
       {'icon': Icons.eco, 'label': 'Poop', 'status': 'Poop pickup completed'},
       {'icon': Icons.water_drop, 'label': 'Water', 'status': 'Water break taken'},
-      {'icon': Icons.camera_alt, 'label': 'Photo', 'action': 'photo'},
+      {'icon': Icons.sports_tennis, 'label': 'Playing', 'status': 'Playing time!'},
     ];
 
     return SingleChildScrollView(
@@ -525,13 +526,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
           return Padding(
             padding: const EdgeInsets.only(right: 8),
             child: GestureDetector(
-              onTap: () {
-                if (a['action'] == 'photo') {
-                  _showMediaSourcePicker();
-                } else {
-                  _sendStatusUpdate(a['status'] as String);
-                }
-              },
+              onTap: () => _sendStatusUpdate(a['status'] as String),
               child: Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
