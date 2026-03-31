@@ -763,7 +763,10 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
             GestureDetector(
               onTap: () => Navigator.pushNamed(context, '/chat',
                   arguments: _bookingId != null
-                      ? {'booking_id': _bookingId}
+                      ? {
+                          'booking_id': _bookingId,
+                          'other_party_name': _walkerName,
+                        }
                       : null),
               child: Container(
                 width: 40,
