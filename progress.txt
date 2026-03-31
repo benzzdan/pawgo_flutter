@@ -1,0 +1,142 @@
+## Codebase Patterns
+- Chat screen (`walker_chat_screen.dart`) handles both owner and walker roles — no separate screens needed
+- Quick actions (status updates) are walker-only via `RoleService.instance.activeRole.value == 'walker'` check
+- Active walk screen: use `_isWalker ? _ownerName : _walkerName` for correct other-party in chat
+- Edge Functions: use `supabase/edge-runtime` with main router at `functions/main/index.ts`
+- Kong WebSocket: needs dedicated route with `key_in_query: true` for Realtime WS connections
+- No direct DB inserts/updates for bookings — all go through Edge Functions
+
+## 2026-03-31 - US-001
+- **What was implemented:** Added `isWalker` ValueNotifier<bool> to RoleService and `is_enabled = true` filter to walkers query
+- **Files changed:**
+  - `lib/services/role_service.dart` — added `isWalker` notifier, filtered walkers query by `is_enabled`, reset in `reset()`
+- **Learnings for future iterations:**
+  - RoleService already existed from prior branch work; only needed `isWalker` notifier and `is_enabled` check
+  - `initialize()` is called in `main.dart` _AuthGate (not sign_in_screen) and `reset()` on sign-out — both already wired
+  - Profile screen uses `role.value == UserRole.both` to show toggle; US-004 should update to use `isWalker.value` instead
+---
+
+---
+
+## 2026-03-31 - US-002
+- **What was implemented:** Fixed sign-out to properly await Supabase signOut() and removed redundant manual navigation from ProfileScreen
+- **Files changed:**
+  - `lib/screens/profile_screen.dart` — made logout handler async, await signOut(), removed manual Navigator.pushNamedAndRemoveUntil (delegated to _AuthGate listener)
+- **Learnings for future iterations:**
+  - Sign-out cleanup (RoleService.reset, GpsBroadcastService.stop, AnalyticsService.reset, navigation) is centralized in _AuthGate's signedOut listener in main.dart — do NOT duplicate in individual screens
+  - Supabase signOut() should always be awaited to ensure local session is cleared before any dependent logic runs
+
+## 2026-03-31 - US-004
+- **What was implemented:** Role toggle in Profile screen — updated visibility condition to use `RoleService.isWalker.value` directly and added `isWalker` listener for reactive updates
+- **Files changed:**
+  - `lib/screens/profile_screen.dart` — Changed `_buildBecomeWalkerCard()` to check `_roleService.isWalker.value` instead of `role.value == UserRole.both`, added `isWalker` listener in initState/dispose
+- **Learnings for future iterations:**
+  - The role toggle was already implemented from a previous iteration; this story just needed the condition aligned to match the AC (`isWalker.value` instead of `role.value == UserRole.both`)
+  - Pre-existing GPS test failure (1/95) in gps_broadcast_service_test.dart — Supabase not initialized in test environment, unrelated to profile changes
+---
+
+## 2026-03-31 - US-007
+- **What was implemented:** Dog photo avatar and booking notes on walker sessions booking cards
+- **Files changed:**
+  - `lib/screens/walker_bookings_screen.dart` — added `photo_url` to dogs FK join query, replaced dog info icon row with CircleAvatar showing dog photo (paw icon fallback), added italic notes text below scheduled time
+- **Learnings for future iterations:**
+  - The walker bookings query uses `*` for the bookings table fields so `notes` is already included — no need to explicitly add it to the select
+  - Dog photo uses `CircleAvatar` with `backgroundImage: NetworkImage(url)` and `onBackgroundImageError` for graceful fallback
+  - Notes are displayed indented under the calendar row (padding-left: 48px to align with text after the icon)
+---
+
+## 2026-03-31 - US-011
+- **What was implemented:** Chat screen role-agnostic — changed other-party bubble from white to gray (#F0F0F0)
+- **Files changed:**
+  - `lib/screens/walker_chat_screen.dart` — updated non-current-user bubble color
+- **Learnings for future iterations:**
+  - WalkerChatScreen already had full chat functionality (realtime, send, media, status updates) — no ChatService class exists despite PRD notes; chat logic is embedded directly in the screen
+  - Chat screen already works for both owner and walker roles — route args determine context
+  - Quick actions (pee/poop/water/photo) and media upload were already implemented in prior iterations
+  - Chat is gated by booking status: input only active when status == 'walk_started'
+---
+
+## 2026-03-31 - US-012
+- **What was implemented:** Added walker name to chat route arguments from owner's active walk screen
+- **Files changed:**
+  - `lib/screens/active_walk_screen.dart` — added `other_party_name: _walkerName` to /chat navigation args
+- **Learnings for future iterations:**
+  - Active walk screen has no explicit booking status variable — it navigates away on walk_completed via realtime subscription
+  - Chat button was already present; only the route args needed updating
+  - `_walkerName` is populated from route args or fetched from DB join on init
+---
+
+## 2026-03-31 - US-013
+- **What was implemented:** Chat entry from walker's active walk screen passes owner name; walker sessions already had chat icons
+- **Files changed:**
+  - `lib/screens/active_walk_screen.dart` — added `_ownerName` field, owner FK join in query, role-aware chat name
+- **Learnings for future iterations:**
+  - Active walk screen booking query now includes `users!bookings_owner_id_fkey(full_name)` for owner name
+  - Chat button uses `_isWalker ? _ownerName : _walkerName` to pass correct other-party name
+  - Walker sessions screen (walker_bookings_screen.dart) already had chat buttons on confirmed/active cards with owner name
+---
+
+## 2026-03-31 - US-014
+- **What was implemented:** Quick status buttons restricted to walker role, Photo replaced with Playing
+- **Files changed:**
+  - `lib/screens/walker_chat_screen.dart` — added RoleService import, walker role check for quick actions, swapped Photo→Playing
+- **Learnings for future iterations:**
+  - Media upload (photo/video) is still available via the image icon in the input bar, separate from quick actions
+  - Quick actions are status_update messages; media upload uses the upload-walk-media Edge Function
+---
+
+## 2026-03-31 - US-015
+- **What was implemented:** Date separators between messages from different days, timestamps already existed on bubbles
+- **Files changed:**
+  - `lib/screens/walker_chat_screen.dart` — added `_shouldShowDateSeparator()`, `_dateLabelFor()`, `_DateSeparator` widget
+- **Learnings for future iterations:**
+  - Date separator uses Today/Yesterday/Mon DD format
+  - First message always gets a separator
+  - Timestamps on individual bubbles were already implemented in _MessageBubble._timeString
+---
+
+## 2026-03-31 - US-016
+- **What was implemented:** Deno Edge Functions container added to docker-compose with Kong routing
+- **Files changed (Pawgo-api repo):**
+  - `docker-compose.yml` — added `functions` service using `supabase/edge-runtime:v1.65.3`
+  - `supabase/kong.yml` — added `/functions/v1/` route proxying to functions:9000
+  - `supabase/functions/main/index.ts` — router that dispatches to individual function handlers
+  - `README.md` — documented edge functions setup and testing
+- **Learnings for future iterations:**
+  - Edge-runtime shims `serve()` so existing function files work as-is
+  - Kong strips `/functions/v1/` prefix before forwarding to functions container
+  - Functions container needs SUPABASE_URL pointing to `http://pawgo-kong:8000` (internal Docker network)
+  - Main router at `functions/main/index.ts` handles dispatching — function name extracted from URL path
+---
+
+## 2026-03-31 - US-017
+- **What was implemented:** Already implemented — booking creation uses `functions.invoke('create-booking')` in booking_screen.dart:149
+- **Files changed:** None (already complete)
+- **Learnings for future iterations:**
+  - Booking creation was moved to Edge Functions in a prior iteration
+  - booking_screen.dart handles the full flow: validate → call edge function → navigate to payment on success
+  - No direct `from('bookings').insert()` exists in the codebase
+---
+
+## 2026-03-31 - US-018
+- **What was implemented:** Already implemented — start/end walk both use Edge Functions
+- **Files changed:** None (already complete)
+- **Learnings for future iterations:**
+  - walker_bookings_screen.dart:160 calls `functions.invoke('start-walk')`
+  - active_walk_screen.dart:355 calls `functions.invoke('end-walk')`
+  - walker_bookings_screen.dart:237 also calls `functions.invoke('end-walk')` for ending from the sessions list
+  - No direct `from('bookings').update()` exists in the codebase
+---
+
+## 2026-03-31 - US-019
+- **What was implemented:** Realtime WebSocket 403 fix — added missing env vars and Kong WebSocket route
+- **Files changed (Pawgo-api repo):**
+  - `docker-compose.yml` — added SECURE_CHANNELS, SLOT_NAME, TEMPORARY_SLOT, REPLICATION_MODE, REPLICATION_POLL_INTERVAL to realtime service
+  - `supabase/kong.yml` — added dedicated `/realtime/v1/websocket` route with key_in_query/key_in_header
+  - `docs/realtime-limitation.md` — documented root cause, fixes, and app fallback behavior
+- **Learnings for future iterations:**
+  - Realtime v2.x uses multi-tenant architecture needing SEED_SELF_HOST + replication config
+  - Kong key-auth needs key_in_query for WebSocket since upgrade requests pass apikey as query param
+  - App has REST polling fallback (10s interval) via RealtimeManager — fully functional without WebSocket
+  - If 403 persists after fixes, check `_realtime.tenants` table and container logs
+---
