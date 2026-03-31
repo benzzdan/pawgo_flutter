@@ -778,7 +778,7 @@ class _MessageBubble extends StatelessWidget {
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
                     color:
-                        isCurrentUser ? AppColors.orange500 : AppColors.white,
+                        isCurrentUser ? AppColors.orange500 : const Color(0xFFF0F0F0),
                     borderRadius: BorderRadius.only(
                       topLeft: const Radius.circular(16),
                       topRight: const Radius.circular(16),
