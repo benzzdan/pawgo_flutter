@@ -43,3 +43,43 @@
 - `textLight` (#AAAAAA) is used exclusively for decorative elements (empty state icons, inactive indicators) and qualifies as "incidental" per WCAG 2.1 §1.4.3
 - Orange buttons use large text (17px+ bold) so the 3:1 threshold applies
 - White text on green/emerald gradient banners uses green500→emerald400 — the gradient midpoint passes 3:1 for large text
+
+---
+
+## Dark Theme
+
+**Date:** 2026-03-30
+**Standard:** WCAG 2.1 AA (4.5:1 normal text, 3:1 large text)
+
+### Results
+
+| Color Pair | Hex Values | Ratio | Min | Result |
+|---|---|---|---|---|
+| darkTextPrimary on darkBackground | #F0F0F0 on #1A1A1E | 15.22:1 | 4.5:1 | PASS |
+| darkTextPrimary on darkSurface | #F0F0F0 on #242428 | 13.57:1 | 4.5:1 | PASS |
+| darkTextPrimary on darkCard | #F0F0F0 on #2A2A2E | 12.54:1 | 4.5:1 | PASS |
+| darkTextSecondary on darkBackground | #9E9E9E on #1A1A1E | 6.48:1 | 4.5:1 | PASS |
+| darkTextSecondary on darkSurface | #9E9E9E on #242428 | 5.77:1 | 4.5:1 | PASS |
+| darkTextSecondary on darkCard | #9E9E9E on #2A2A2E | 5.34:1 | 4.5:1 | PASS |
+| darkTextTertiary on darkBackground | #757575 on #1A1A1E | 3.77:1 | 3.0:1 | PASS |
+| darkTextTertiary on darkCard | #757575 on #2A2A2E | 3.10:1 | 3.0:1 | PASS |
+| orange400 on darkBackground (accent) | #FB923C on #1A1A1E | 7.67:1 | 3.0:1 | PASS |
+| orange400 on darkCard (accent) | #FB923C on #2A2A2E | 6.32:1 | 3.0:1 | PASS |
+| white on orange500 (buttons, large) | #FFFFFF on #EA6C10 | 3.16:1 | 3.0:1 | PASS |
+
+### Screens Verified
+
+- **HomeScreen:** darkTextPrimary on darkBackground (greeting), darkTextSecondary for subtitles
+- **BookingsScreen:** darkTextPrimary on darkCard (booking cards), orange400 accent text
+- **MyDogsScreen:** darkTextPrimary on darkCard (dog cards), darkTextSecondary for details
+- **ProfileScreen:** darkTextPrimary on darkBackground, darkTextSecondary for labels
+
+### Changes Made
+
+No changes required — all dark theme color pairs pass WCAG AA thresholds.
+
+### Notes
+
+- Dark theme uses `orange400` (#FB923C) as the accent color instead of `orange500` for better visibility on dark backgrounds
+- `darkTextTertiary` (#757575) passes 3:1 for large text; used only for labels and non-essential text
+- Button styling in dark theme inherits `orange500` background with white foreground — passes 3:1 for large text
