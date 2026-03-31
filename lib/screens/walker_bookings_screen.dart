@@ -84,7 +84,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
       // Fetch all bookings assigned to this walker
       final bookings = await withRetry(() => _supabase
           .from('bookings')
-          .select('*, dogs(name, breed), users!bookings_owner_id_fkey(full_name, avatar_url)')
+          .select('*, dogs(name, breed, photo_url), users!bookings_owner_id_fkey(full_name, avatar_url)')
           .eq('walker_id', _walkerId!)
           .inFilter('status', ['confirmed', 'walker_en_route', 'walk_started', 'walk_completed'])
           .order('scheduled_at', ascending: true));
@@ -427,6 +427,8 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
     final scheduledAt = booking['scheduled_at'] as String?;
     final durationMinutes = booking['duration_minutes'];
     final totalPrice = booking['total_price_mxn'];
+    final notes = booking['notes'] as String?;
+    final dogPhotoUrl = dog?['photo_url'] as String?;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -500,13 +502,33 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          // Dog info
+          // Dog info with photo
           if (dog != null) ...[
-            _DetailRow(
-              icon: Icons.pets,
-              iconColor: AppColors.orange500,
-              bgColor: AppColors.orange50,
-              text: '${dog['name'] ?? 'Unknown'} (${dog['breed'] ?? 'Unknown breed'})',
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: AppColors.orange50,
+                  backgroundImage: dogPhotoUrl != null ? NetworkImage(dogPhotoUrl) : null,
+                  onBackgroundImageError: dogPhotoUrl != null
+                      ? (_, __) {}
+                      : null,
+                  child: dogPhotoUrl == null
+                      ? const Icon(Icons.pets, size: 20, color: AppColors.orange500)
+                      : null,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '${dog['name'] ?? 'Unknown'} (${dog['breed'] ?? 'Unknown breed'})',
+                    style: GoogleFonts.nunito(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 10),
           ],
@@ -517,6 +539,22 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
             bgColor: AppColors.blue50,
             text: _formatDateTime(scheduledAt),
           ),
+          // Booking notes
+          if (notes != null && notes.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.only(left: 48),
+              child: Text(
+                notes,
+                style: GoogleFonts.nunito(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textSecondary,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+          ],
           // Duration & price
           if (durationMinutes != null || totalPrice != null) ...[
             const SizedBox(height: 10),
