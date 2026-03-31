@@ -7,6 +7,7 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:pawgo/services/analytics_service.dart';
 
 class ActiveWalkScreen extends StatefulWidget {
   const ActiveWalkScreen({super.key});
@@ -42,6 +43,9 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
   // Walker GPS broadcast
   bool _isWalker = false;
   final GpsBroadcastService _gpsBroadcast = GpsBroadcastService.instance;
+
+  // End walk state
+  bool _endingWalk = false;
 
   // Tab state
   String _activeTab = 'updates';
@@ -299,6 +303,74 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
 
   double _toRad(double deg) => deg * (3.14159265358979323846 / 180);
 
+  Future<void> _endWalk() async {
+    if (_bookingId == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('End Walk?',
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+        content: Text('Are you sure you want to end this walk?',
+            style: GoogleFonts.nunito()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.orange500),
+            child: Text('End Walk',
+                style: GoogleFonts.nunito(
+                    fontWeight: FontWeight.w700, color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    setState(() => _endingWalk = true);
+
+    try {
+      final res = await withRetry(() =>
+          Supabase.instance.client.functions.invoke(
+            'end-walk',
+            body: {'booking_id': _bookingId},
+          ));
+
+      if (!mounted) return;
+
+      if (res.status != 200) {
+        setState(() => _endingWalk = false);
+        ErrorHandler.instance.handleFunctionError(
+          context,
+          res,
+          screen: 'active_walk',
+          fallbackMessage: 'Failed to end walk',
+        );
+      } else {
+        AnalyticsService.instance.walkCompleted(bookingId: _bookingId!);
+        GpsBroadcastService.instance.stopBroadcasting();
+        if (!mounted) return;
+        ErrorHandler.instance.showRecoverableError(context, 'Walk completed!');
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _endingWalk = false);
+      ErrorHandler.instance.handleError(
+        context,
+        e,
+        screen: 'active_walk',
+        fallbackMessage: 'Failed to end walk. Please try again.',
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -317,6 +389,10 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
                     _buildWalkerInfo(),
                     const SizedBox(height: 16),
                     _buildStatsGrid(),
+                    if (_isWalker) ...[
+                      const SizedBox(height: 16),
+                      _buildEndWalkButton(),
+                    ],
                     const SizedBox(height: 16),
                     _buildTabNav(),
                     const SizedBox(height: 16),
@@ -671,6 +747,51 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
             label: 'points',
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildEndWalkButton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: SizedBox(
+        width: double.infinity,
+        height: 48,
+        child: ElevatedButton(
+          onPressed: _endingWalk ? null : _endWalk,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.red500,
+            foregroundColor: Colors.white,
+            disabledBackgroundColor: AppColors.red500.withValues(alpha: 0.5),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            elevation: 0,
+          ),
+          child: _endingWalk
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.stop_circle, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      'End Walk',
+                      style: GoogleFonts.nunito(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }
