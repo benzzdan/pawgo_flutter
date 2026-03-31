@@ -26,6 +26,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
   String? _bookingId;
   String? _walkerName;
   String? _dogName;
+  String? _ownerName;
 
   // Walk stats
   int _elapsedMinutes = 0;
@@ -111,7 +112,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     try {
       final data = await withRetry(() => Supabase.instance.client
           .from('bookings')
-          .select('*, walkers(id, user_id, users(full_name, avatar_url)), dogs(name)')
+          .select('*, walkers(id, user_id, users(full_name, avatar_url)), dogs(name), users!bookings_owner_id_fkey(full_name)')
           .eq('id', _bookingId!)
           .single());
       if (!mounted) return;
@@ -131,6 +132,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
       setState(() {
         _walkerName ??= data['walkers']?['users']?['full_name'] as String? ?? 'Walker';
         _dogName ??= data['dogs']?['name'] as String? ?? 'Your dog';
+        _ownerName = data['users']?['full_name'] as String? ?? 'Owner';
         _isWalker = isWalker;
         // Calculate elapsed time from started_at
         final startedAt = data['started_at'] as String?;
@@ -765,7 +767,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                   arguments: _bookingId != null
                       ? {
                           'booking_id': _bookingId,
-                          'other_party_name': _walkerName,
+                          'other_party_name': _isWalker ? _ownerName : _walkerName,
                         }
                       : null),
               child: Container(
