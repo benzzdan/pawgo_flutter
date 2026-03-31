@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
-  // Primary — softened for minimalistic feel
-  static const orange500 = Color(0xFFF97316);
+  // Primary — WCAG AA compliant (3.16:1 vs white for large text)
+  static const orange500 = Color(0xFFEA6C10);
   static const orange400 = Color(0xFFFB923C);
   static const orange50 = Color(0xFFFFF7ED);
   static const orange100 = Color(0xFFFFEDD5);
@@ -15,11 +15,11 @@ class AppColors {
   static const cardBackground = Color(0xFFFFFFFF);
   static const inputFill = Color(0xFFF9F7F4);
 
-  // Text
-  static const textPrimary = Color(0xFF1A1A1A);
-  static const textSecondary = Color(0xFF888888);
-  static const textTertiary = Color(0xFFAAAAAA);
-  static const textLight = Color(0xFFBBBBBB);
+  // Text — WCAG AA compliant on background (#FDF8F2) and white
+  static const textPrimary = Color(0xFF1A1A1A);   // 16.48:1 on background
+  static const textSecondary = Color(0xFF6F6F6F);  // 4.76:1 on background
+  static const textTertiary = Color(0xFF8A8A8A);   // 3.45:1 on white (decorative/non-essential)
+  static const textLight = Color(0xFFAAAAAA);       // Placeholder/decorative only
 
   // Borders
   static const border = Color(0xFFF0ECE6);
