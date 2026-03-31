@@ -17,12 +17,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _applicationStatus;
   bool _applicationLoading = true;
 
+  // User profile data
+  String? _fullName;
+  String? _email;
+  String? _phone;
+  bool _profileLoading = true;
+
   final _supabase = Supabase.instance.client;
   final _roleService = RoleService.instance;
 
   @override
   void initState() {
     super.initState();
+    _loadUserProfile();
     _checkApplicationStatus();
     _roleService.role.addListener(_onRoleChanged);
     _roleService.activeRole.addListener(_onRoleChanged);
@@ -37,6 +44,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _onRoleChanged() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _loadUserProfile() async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) return;
+
+      _email = user.email;
+
+      final row = await _supabase
+          .from('users')
+          .select('full_name, phone')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (!mounted) return;
+      setState(() {
+        _fullName = row?['full_name'] as String?;
+        _phone = row?['phone'] as String?;
+        _profileLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _profileLoading = false);
+    }
   }
 
   Future<void> _checkApplicationStatus() async {
@@ -160,36 +192,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(width: 16),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Daniel Smith',
-                            style: GoogleFonts.nunito(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.textPrimary,
+                      child: _profileLoading
+                          ? const SizedBox(
+                              height: 48,
+                              child: Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _fullName ?? _email ?? '',
+                                  style: GoogleFonts.nunito(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                if (_email != null)
+                                  Text(
+                                    _email!,
+                                    style: GoogleFonts.nunito(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                if (_phone != null)
+                                  Text(
+                                    _phone!,
+                                    style: GoogleFonts.nunito(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                              ],
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'daniel.smith@email.com',
-                            style: GoogleFonts.nunito(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                          Text(
-                            '+1 (555) 123-4567',
-                            style: GoogleFonts.nunito(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
                     ),
                     Container(
                       width: 40,
