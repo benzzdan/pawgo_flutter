@@ -22,6 +22,9 @@ class RoleService {
   final ValueNotifier<UserRole> role = ValueNotifier(UserRole.owner);
   final ValueNotifier<ActiveRole> activeRole = ValueNotifier(ActiveRole.owner);
 
+  /// Whether the current user has an active (enabled) walker profile.
+  final ValueNotifier<bool> isWalker = ValueNotifier(false);
+
   /// Whether a pending walker application exists.
   final ValueNotifier<bool> hasPendingApplication = ValueNotifier(false);
 
@@ -40,18 +43,21 @@ class RoleService {
     if (userId == null) {
       role.value = UserRole.owner;
       activeRole.value = ActiveRole.owner;
+      isWalker.value = false;
       hasPendingApplication.value = false;
       return;
     }
 
-    // Check if user has a walker profile.
+    // Check if user has an active walker profile (is_enabled = true).
     final walkerRow = await _client
         .from('walkers')
         .select('id')
         .eq('user_id', userId)
+        .eq('is_enabled', true)
         .maybeSingle();
 
-    final isWalker = walkerRow != null;
+    final hasWalkerProfile = walkerRow != null;
+    isWalker.value = hasWalkerProfile;
 
     // Check for pending application.
     final appRow = await _client
@@ -68,7 +74,7 @@ class RoleService {
             appRow['status'] == 'background_check_in_progress');
 
     // Determine role.
-    if (isWalker) {
+    if (hasWalkerProfile) {
       // A walker row means the user is at least a walker.
       // All users are owners by default (they can book walks), so having a
       // walker profile means they are "both".
@@ -78,7 +84,7 @@ class RoleService {
     }
 
     // If the user lost their walker profile somehow, reset active role.
-    if (!isWalker && activeRole.value == ActiveRole.walker) {
+    if (!hasWalkerProfile && activeRole.value == ActiveRole.walker) {
       activeRole.value = ActiveRole.owner;
     }
   }
@@ -95,6 +101,7 @@ class RoleService {
   void reset() {
     role.value = UserRole.owner;
     activeRole.value = ActiveRole.owner;
+    isWalker.value = false;
     hasPendingApplication.value = false;
     _initialized = false;
   }
