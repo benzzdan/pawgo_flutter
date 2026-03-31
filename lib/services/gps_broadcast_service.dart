@@ -26,11 +26,18 @@ class GpsBroadcastService {
     stopBroadcasting();
     _lastPosition = null;
     positionNotifier.value = null;
+    lastPermissionError = null;
     testClient = null;
   }
 
   /// Whether GPS broadcasting is currently active.
   bool get isBroadcasting => _isBroadcasting;
+
+  /// Notifier for broadcasting state changes (UI can listen).
+  ValueNotifier<bool> broadcastingNotifier = ValueNotifier(false);
+
+  /// Reason for last permission failure (null if no failure).
+  String? lastPermissionError;
 
   /// The booking ID currently being tracked.
   String? get activeBookingId => _activeBookingId;
@@ -55,6 +62,7 @@ class GpsBroadcastService {
 
     _activeBookingId = bookingId;
     _isBroadcasting = true;
+    broadcastingNotifier.value = true;
 
     // Send initial position immediately
     await _captureAndSendPosition();
@@ -75,6 +83,7 @@ class GpsBroadcastService {
     _broadcastTimer = null;
     _isBroadcasting = false;
     _activeBookingId = null;
+    broadcastingNotifier.value = false;
     debugPrint('GPS broadcast stopped');
   }
 
@@ -130,8 +139,11 @@ class GpsBroadcastService {
   }
 
   Future<bool> _ensureLocationPermission() async {
+    lastPermissionError = null;
+
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
+      lastPermissionError = 'Location services are disabled. Please enable GPS in your device settings.';
       debugPrint('Location services are disabled');
       return false;
     }
@@ -140,12 +152,14 @@ class GpsBroadcastService {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
+        lastPermissionError = 'Location permission is required to broadcast your GPS position during walks.';
         debugPrint('Location permission denied');
         return false;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
+      lastPermissionError = 'Location permission was permanently denied. Please enable it in Settings > Pawgo > Location.';
       debugPrint('Location permission permanently denied');
       return false;
     }

@@ -16,7 +16,8 @@ class ActiveWalkScreen extends StatefulWidget {
   State<ActiveWalkScreen> createState() => _ActiveWalkScreenState();
 }
 
-class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
+class _ActiveWalkScreenState extends State<ActiveWalkScreen>
+    with SingleTickerProviderStateMixin {
   // Map state
   GoogleMapController? _mapController;
   final List<LatLng> _routePoints = [];
@@ -47,6 +48,10 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
   // End walk state
   bool _endingWalk = false;
 
+  // GPS broadcast pulse animation
+  late final AnimationController _pulseController;
+  late final Animation<double> _pulseAnimation;
+
   // Tab state
   String _activeTab = 'updates';
 
@@ -56,6 +61,13 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
   @override
   void initState() {
     super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+    _pulseAnimation = Tween<double>(begin: 0.4, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
   }
 
   @override
@@ -81,6 +93,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
 
   @override
   void dispose() {
+    _pulseController.dispose();
     _elapsedTimer?.cancel();
     _gpsTimeoutTimer?.cancel();
     _locationChannel?.unsubscribe();
@@ -155,10 +168,9 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
     if (_bookingId == null) return;
     final started = await _gpsBroadcast.startBroadcasting(_bookingId!);
     if (!started && mounted) {
-      ErrorHandler.instance.showRecoverableError(
-        context,
-        'Could not access GPS. Please enable location services.',
-      );
+      final message = _gpsBroadcast.lastPermissionError ??
+          'Could not access GPS. Please enable location services.';
+      ErrorHandler.instance.showRecoverableError(context, message);
     }
   }
 
@@ -565,6 +577,63 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen> {
                 ),
               ),
             ),
+            // Walker GPS Broadcasting indicator
+            if (_isWalker)
+              Positioned(
+                top: 12,
+                right: 12,
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: _gpsBroadcast.broadcastingNotifier,
+                  builder: (context, isBroadcasting, _) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.95),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.1),
+                            blurRadius: 8,
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          AnimatedBuilder(
+                            animation: _pulseAnimation,
+                            builder: (context, child) {
+                              return Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: isBroadcasting
+                                      ? AppColors.green500
+                                          .withValues(alpha: _pulseAnimation.value)
+                                      : AppColors.red500,
+                                  shape: BoxShape.circle,
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            isBroadcasting ? 'Broadcasting GPS' : 'GPS Off',
+                            style: GoogleFonts.nunito(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: isBroadcasting
+                                  ? AppColors.green600
+                                  : AppColors.red500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
             // GPS Signal Lost Banner
             if (_gpsSignalLost)
               Positioned(
