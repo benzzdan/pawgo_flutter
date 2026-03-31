@@ -33,12 +33,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _checkApplicationStatus();
     _roleService.role.addListener(_onRoleChanged);
     _roleService.activeRole.addListener(_onRoleChanged);
+    _roleService.isWalker.addListener(_onRoleChanged);
   }
 
   @override
   void dispose() {
     _roleService.role.removeListener(_onRoleChanged);
     _roleService.activeRole.removeListener(_onRoleChanged);
+    _roleService.isWalker.removeListener(_onRoleChanged);
     super.dispose();
   }
 
@@ -439,16 +441,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return const SizedBox.shrink();
     }
 
-    final userRole = _roleService.role.value;
-
-    // If user is both owner and walker, show role toggle
-    if (userRole == UserRole.both) {
+    // If user has an active walker profile, show role toggle
+    if (_roleService.isWalker.value) {
       return _buildRoleToggle();
-    }
-
-    // If user is walker-only (unlikely but handled), no card needed
-    if (userRole == UserRole.walker) {
-      return const SizedBox.shrink();
     }
 
     // Owner-only: show "Become a Walker" or "Application Status"
