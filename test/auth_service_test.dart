@@ -68,6 +68,43 @@ void main() {
       );
     });
 
+    testWidgets(
+        'redirects to login on malformed JWT (AuthException) with generic message',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: AuthService.instance.navigatorKey,
+          initialRoute: '/home',
+          routes: {
+            '/': (context) => const Scaffold(body: Text('Sign In')),
+            '/home': (context) => const Scaffold(body: Text('Home')),
+          },
+        ),
+      );
+
+      expect(find.text('Home'), findsOneWidget);
+
+      // Simulate malformed JWT — Supabase throws AuthException.
+      final handled = AuthService.instance.handleAuthError(
+        AuthException('Invalid JWT: malformed token'),
+      );
+
+      expect(handled, isTrue);
+      await tester.pumpAndSettle();
+
+      // Redirected to login.
+      expect(find.text('Sign In'), findsOneWidget);
+      expect(find.text('Home'), findsNothing);
+
+      // Shows generic message — NOT the raw exception text.
+      expect(
+        find.text('Session expired. Please sign in again.'),
+        findsOneWidget,
+      );
+      // Raw error text must NOT be shown.
+      expect(find.text('Invalid JWT: malformed token'), findsNothing);
+    });
+
     testWidgets('does not handle non-auth errors', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
