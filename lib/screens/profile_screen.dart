@@ -704,10 +704,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildLogout() {
     return GestureDetector(
-      onTap: () {
-        Supabase.instance.client.auth.signOut();
-        Navigator.pushNamedAndRemoveUntil(
-            context, '/', (route) => false);
+      onTap: () async {
+        await Supabase.instance.client.auth.signOut();
+        // _AuthGate listener handles RoleService.reset(),
+        // GpsBroadcastService.stopBroadcasting(), and navigation to '/'.
       },
       child: Container(
         decoration: BoxDecoration(
