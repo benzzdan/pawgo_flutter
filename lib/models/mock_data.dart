@@ -43,6 +43,7 @@ class Dog {
   final String age;
   final String weight;
   final String image;
+  final String? photoUrl;
 
   const Dog({
     required this.id,
@@ -51,6 +52,7 @@ class Dog {
     required this.age,
     required this.weight,
     required this.image,
+    this.photoUrl,
   });
 }
 
