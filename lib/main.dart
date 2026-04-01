@@ -24,11 +24,14 @@ import 'package:pawgo/screens/walker_application_step3_screen.dart';
 import 'package:pawgo/screens/walker_application_step4_screen.dart';
 import 'package:pawgo/screens/application_status_screen.dart';
 import 'package:pawgo/screens/walker_chat_list_screen.dart';
+import 'package:pawgo/screens/earnings_screen.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:pawgo/services/ad_service.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/role_service.dart';
+import 'package:pawgo/services/theme_service.dart';
+import 'package:pawgo/services/auth_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -71,6 +74,9 @@ Future<void> main() async {
       statusBarIconBrightness: Brightness.dark,
     ),
   );
+
+  AuthService.instance.initialize();
+  await ThemeService.instance.initialize();
   runApp(const PawgoApp());
 }
 
@@ -88,37 +94,55 @@ class PawgoApp extends StatelessWidget {
       GpsBroadcastService.instance.resumeIfActiveWalk();
     }
 
-    return MaterialApp(
-      title: 'Pawgo',
-      navigatorKey: ErrorHandler.instance.navigatorKey,
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.theme,
-      darkTheme: AppTheme.darkTheme,
-      initialRoute: initialRoute,
-      routes: {
-        '/': (context) => const _AuthGate(),
-        '/signup': (context) => const SignUpScreen(),
-        '/home': (context) => const MainShell(),
-        '/walker': (context) => const WalkerProfileScreen(),
-        '/active-walk': (context) => const ActiveWalkScreen(),
-        '/chat': (context) => const WalkerChatScreen(),
-        '/profile': (context) => const ProfileScreen(),
-        '/booking': (context) => const BookingScreen(),
-        '/payment': (context) => const PaymentScreen(),
-        '/walker-bookings': (context) => const WalkerBookingsScreen(),
-        '/review': (context) => const ReviewScreen(),
-        '/walker-earnings': (context) => const WalkerEarningsScreen(),
-        '/insurance-claim': (context) => const InsuranceClaimScreen(),
-        '/walker-application': (context) => const WalkerApplicationScreen(),
-        '/walker-application-step2': (context) =>
-            const WalkerApplicationStep2Screen(),
-        '/walker-application-step3': (context) =>
-            const WalkerApplicationStep3Screen(),
-        '/walker-application-step4': (context) =>
-            const WalkerApplicationStep4Screen(),
-        '/walker-application-status': (context) =>
-            const ApplicationStatusScreen(),
-        '/walker-chat-list': (context) => const WalkerChatListScreen(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeService.instance.themeMode,
+      builder: (context, themeMode, _) {
+        return MaterialApp(
+          title: 'Pawgo',
+          navigatorKey: ErrorHandler.instance.navigatorKey,
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.theme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: themeMode,
+          initialRoute: initialRoute,
+          onGenerateRoute: (settings) {
+            final routes = <String, WidgetBuilder>{
+              '/': (context) => const _AuthGate(),
+              '/signup': (context) => const SignUpScreen(),
+              '/home': (context) => const MainShell(),
+              '/walker': (context) => const WalkerProfileScreen(),
+              '/active-walk': (context) => const ActiveWalkScreen(),
+              '/chat': (context) => const WalkerChatScreen(),
+              '/profile': (context) => const ProfileScreen(),
+              '/booking': (context) => const BookingScreen(),
+              '/payment': (context) => const PaymentScreen(),
+              '/walker-bookings': (context) => const WalkerBookingsScreen(),
+              '/review': (context) => const ReviewScreen(),
+              '/walker-earnings': (context) => const WalkerEarningsScreen(),
+              '/insurance-claim': (context) => const InsuranceClaimScreen(),
+              '/walker-application': (context) =>
+                  const WalkerApplicationScreen(),
+              '/walker-application-step2': (context) =>
+                  const WalkerApplicationStep2Screen(),
+              '/walker-application-step3': (context) =>
+                  const WalkerApplicationStep3Screen(),
+              '/walker-application-step4': (context) =>
+                  const WalkerApplicationStep4Screen(),
+              '/walker-application-status': (context) =>
+                  const ApplicationStatusScreen(),
+              '/walker-chat-list': (context) => const WalkerChatListScreen(),
+              '/earnings': (context) => const EarningsScreen(),
+            };
+            final builder = routes[settings.name];
+            if (builder != null) {
+              return PawgoPageRoute(
+                builder: builder,
+                settings: settings,
+              );
+            }
+            return null;
+          },
+        );
       },
     );
   }

@@ -31,6 +31,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
   RealtimeChannel? _bookingChannel;
   String? _currentUserId;
   String? _bookingStatus;
+  bool _isDisconnected = false;
 
   /// Whether chat input is enabled (only during active walks).
   bool get _isChatActive => _bookingStatus == 'walk_started';
@@ -161,6 +162,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
   }
 
   void _subscribeToMessages() {
+    _channel?.unsubscribe();
     _channel = _supabase
         .channel('messages:$_bookingId')
         .onPostgresChanges(
@@ -178,7 +180,12 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
             _fetchSingleMessage(newMessage['id'].toString());
           },
         )
-        .subscribe();
+        .subscribe((status, [error]) {
+      if (!mounted) return;
+      setState(() {
+        _isDisconnected = status != RealtimeSubscribeStatus.subscribed;
+      });
+    });
   }
 
   Future<void> _fetchSingleMessage(String messageId) async {
@@ -399,15 +406,40 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
         child: Column(
           children: [
             _buildHeader(),
+            if (_isDisconnected) _buildConnectionBanner(),
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _buildMessages(),
             ),
-            if (_isChatActive && RoleService.instance.activeRole.value == 'walker') _buildQuickActions(),
+            if (_isChatActive && RoleService.instance.activeRole.value == ActiveRole.walker) _buildQuickActions(),
             _isChatActive ? _buildInput() : _buildDisabledInput(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildConnectionBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: AppColors.orange100,
+      child: Row(
+        children: [
+          const Icon(Icons.wifi_off, size: 16, color: AppColors.orange500),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Reconnecting\u2026 Messages may be delayed.',
+              style: GoogleFonts.nunito(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.orange500,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -432,29 +464,84 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
             ),
           ),
           const SizedBox(width: 12),
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [AppColors.orange400, AppColors.orange500],
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.orange400, AppColors.orange500],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(
+                    (_otherPartyName ?? '').isNotEmpty
+                        ? _otherPartyName![0].toUpperCase()
+                        : '?',
+                    style: GoogleFonts.nunito(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
               ),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Center(
-              child: Icon(Icons.person, size: 24, color: Colors.white),
-            ),
+              if (_isChatActive)
+                Positioned(
+                  bottom: -2,
+                  right: -2,
+                  child: Container(
+                    width: 14,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: AppColors.green500,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              _otherPartyName ?? 'Chat',
-              style: GoogleFonts.nunito(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
-              ),
-              overflow: TextOverflow.ellipsis,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _otherPartyName ?? 'Chat',
+                  style: GoogleFonts.nunito(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (_isChatActive)
+                  Row(
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: const BoxDecoration(
+                          color: AppColors.green500,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Active now',
+                        style: GoogleFonts.nunito(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.green600,
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
             ),
           ),
         ],
@@ -542,6 +629,8 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
   }
 
   Widget _buildQuickActions() {
+    if (!_isChatActive) return const SizedBox.shrink();
+
     final actions = [
       {'icon': Icons.pets, 'label': 'Pee break', 'status': 'Pee break completed'},
       {'icon': Icons.eco, 'label': 'Poop', 'status': 'Poop pickup completed'},
@@ -651,29 +740,31 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
           ),
           const SizedBox(width: 8),
           GestureDetector(
-            onTap: _handleSend,
+            onTap: _isChatActive ? _handleSend : null,
             child: Container(
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: _message.trim().isNotEmpty
+                color: _message.trim().isNotEmpty && _isChatActive
                     ? AppColors.orange500
                     : AppColors.surface,
                 borderRadius: BorderRadius.circular(12),
-                boxShadow: _message.trim().isNotEmpty
-                    ? [
-                        BoxShadow(
-                          color: AppColors.orange500.withValues(alpha: 0.3),
-                          blurRadius: 12,
-                          offset: const Offset(0, 2),
-                        ),
-                      ]
-                    : null,
+                boxShadow:
+                    _message.trim().isNotEmpty && _isChatActive
+                        ? [
+                            BoxShadow(
+                              color:
+                                  AppColors.orange500.withValues(alpha: 0.3),
+                              blurRadius: 12,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
+                        : null,
               ),
               child: Icon(
                 Icons.send,
                 size: 18,
-                color: _message.trim().isNotEmpty
+                color: _message.trim().isNotEmpty && _isChatActive
                     ? Colors.white
                     : const Color(0xFFCCCCCC),
               ),
@@ -784,10 +875,11 @@ class _MessageBubble extends StatelessWidget {
             child: Center(
               child: Text(
                 _senderName.isNotEmpty ? _senderName[0].toUpperCase() : '?',
-                style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold),
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),
@@ -859,10 +951,11 @@ class _MessageBubble extends StatelessWidget {
             child: Center(
               child: Text(
                 _senderName.isNotEmpty ? _senderName[0].toUpperCase() : '?',
-                style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold),
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),

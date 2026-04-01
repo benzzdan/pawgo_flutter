@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/services/error_handler.dart';
 
 class SignInScreen extends StatefulWidget {
@@ -50,7 +50,7 @@ class _SignInScreenState extends State<SignInScreen> {
                       onBack: () => setState(() => _showPhoneForm = false),
                     )
                   else
-                    _buildSignInOptions(context),
+                    _buildSignInOptions(),
                   const SizedBox(height: 24),
                   _buildTerms(),
                   const SizedBox(height: 24),
@@ -111,7 +111,7 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
-  Widget _buildSignInOptions(BuildContext context) {
+  Widget _buildSignInOptions() {
     return Column(
       children: [
         Text(
@@ -123,6 +123,29 @@ class _SignInScreenState extends State<SignInScreen> {
           ),
         ),
         const SizedBox(height: 24),
+        // Google Sign In
+        _SignInButton(
+          onTap: () {
+            // TODO: implement Google OAuth with Supabase
+          },
+          backgroundColor: AppColors.white,
+          textColor: AppColors.textPrimary,
+          label: 'Continue with Google',
+          icon: _buildGoogleIcon(),
+          shadow: true,
+        ),
+        const SizedBox(height: 16),
+        // Apple Sign In
+        _SignInButton(
+          onTap: () {
+            // TODO: implement Apple OAuth with Supabase
+          },
+          backgroundColor: AppColors.textPrimary,
+          textColor: AppColors.white,
+          label: 'Continue with Apple',
+          icon: const Icon(Icons.apple, color: Colors.white, size: 24),
+        ),
+        const SizedBox(height: 16),
         // Email Sign In
         _SignInButton(
           onTap: () => setState(() => _showEmailForm = true),
@@ -188,6 +211,14 @@ class _SignInScreenState extends State<SignInScreen> {
           ],
         ),
       ],
+    );
+  }
+
+  Widget _buildGoogleIcon() {
+    return SizedBox(
+      width: 24,
+      height: 24,
+      child: CustomPaint(painter: _GoogleLogoPainter()),
     );
   }
 
@@ -525,13 +556,14 @@ class _PhoneLoginFormState extends State<_PhoneLoginForm> {
 // --- Shared Widgets ---
 
 class _SignInButton extends StatelessWidget {
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final Color backgroundColor;
   final Color textColor;
   final String label;
   final Widget icon;
   final bool orangeShadow;
   final bool border;
+  final bool shadow;
 
   const _SignInButton({
     required this.onTap,
@@ -541,6 +573,7 @@ class _SignInButton extends StatelessWidget {
     required this.icon,
     this.orangeShadow = false,
     this.border = false,
+    this.shadow = false,
   });
 
   @override
@@ -560,6 +593,12 @@ class _SignInButton extends StatelessWidget {
               BoxShadow(
                 color: AppColors.orange500.withValues(alpha: 0.3),
                 blurRadius: 20,
+                offset: const Offset(0, 4),
+              ),
+            if (shadow)
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
           ],
@@ -659,6 +698,67 @@ class _AuthTextField extends StatelessWidget {
       ],
     );
   }
+}
+
+class _GoogleLogoPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double w = size.width;
+    final double h = size.height;
+
+    final bluePaint = Paint()..color = const Color(0xFF4285F4);
+    canvas.drawCircle(Offset(w * 0.5, h * 0.5), w * 0.45, bluePaint);
+
+    final whitePaint = Paint()..color = Colors.white;
+    canvas.drawCircle(Offset(w * 0.5, h * 0.5), w * 0.3, whitePaint);
+
+    final redPaint = Paint()
+      ..color = const Color(0xFFEA4335)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.15;
+    canvas.drawArc(
+      Rect.fromCenter(
+          center: Offset(w * 0.5, h * 0.5), width: w * 0.6, height: h * 0.6),
+      -0.8,
+      0.8,
+      false,
+      redPaint,
+    );
+
+    final greenPaint = Paint()
+      ..color = const Color(0xFF34A853)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.15;
+    canvas.drawArc(
+      Rect.fromCenter(
+          center: Offset(w * 0.5, h * 0.5), width: w * 0.6, height: h * 0.6),
+      1.6,
+      0.8,
+      false,
+      greenPaint,
+    );
+
+    final yellowPaint = Paint()
+      ..color = const Color(0xFFFBBC05)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.15;
+    canvas.drawArc(
+      Rect.fromCenter(
+          center: Offset(w * 0.5, h * 0.5), width: w * 0.6, height: h * 0.6),
+      2.4,
+      0.8,
+      false,
+      yellowPaint,
+    );
+
+    canvas.drawRect(
+      Rect.fromLTWH(w * 0.5, h * 0.4, w * 0.45, h * 0.2),
+      bluePaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _PrimaryButton extends StatelessWidget {

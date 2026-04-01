@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/widgets/stat_card.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/services/ad_service.dart';
 import 'package:pawgo/services/error_handler.dart';
 
@@ -20,11 +20,15 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _error;
   BannerAd? _bannerAd;
   bool _isBannerAdLoaded = false;
+  int _upcoming = 0;
+  int _active = 0;
+  int _completed = 0;
 
   @override
   void initState() {
     super.initState();
     _fetchWalkers();
+    _loadStats();
     _loadBannerAd();
   }
 
@@ -54,7 +58,6 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       setState(() {
         _walkers = List<Map<String, dynamic>>.from(data);
-        _loading = false;
       });
     } catch (e) {
       if (!mounted) return;
@@ -64,13 +67,72 @@ class _HomeScreenState extends State<HomeScreen> {
             ?.pushNamedAndRemoveUntil('/', (route) => false);
         return;
       }
-      setState(() {
-        _error = appError.isNetworkError
-            ? 'No internet connection'
-            : 'Could not load walkers';
-        _loading = false;
-      });
+      // Walkers error is non-blocking; stats may still load fine
     }
+  }
+
+  Future<void> _loadStats() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) {
+        if (mounted) {
+          setState(() {
+            _loading = false;
+            _error = 'Not authenticated';
+          });
+        }
+        return;
+      }
+
+      final bookings = await Supabase.instance.client
+          .from('bookings')
+          .select('status')
+          .eq('owner_id', userId);
+
+      final list = bookings as List;
+      int upcoming = 0;
+      int active = 0;
+      int completed = 0;
+
+      for (final b in list) {
+        final status = b['status'] as String?;
+        switch (status) {
+          case 'pending':
+          case 'confirmed':
+          case 'walker_en_route':
+            upcoming++;
+          case 'walk_started':
+            active++;
+          case 'walk_completed':
+            completed++;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _upcoming = upcoming;
+          _active = active;
+          _completed = completed;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Unable to load your dashboard. Please try again.';
+        });
+      }
+    }
+  }
+
+  Future<void> _refreshAll() async {
+    await Future.wait([_fetchWalkers(), _loadStats()]);
   }
 
   String get _timeOfDay {
@@ -93,35 +155,53 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_error != null && _walkers.isEmpty) {
+      return _buildErrorState();
+    }
+
     return RefreshIndicator(
-      onRefresh: _fetchWalkers,
+      onRefresh: _refreshAll,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Greeting
+            // Greeting with sitting corgi companion
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 10, 24, 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text(
-                    'Good $_timeOfDay \u{1F44B}',
-                    style: GoogleFonts.nunito(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.textPrimary,
-                      letterSpacing: -0.5,
-                    ),
+                  Image.asset(
+                    'assets/illustrations/corgi_sitting.png',
+                    width: 90,
+                    height: 90,
+                    fit: BoxFit.contain,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "Your pup's tail is wagging\u{2014}ready for today's adventure?",
-                    style: GoogleFonts.nunito(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Good $_timeOfDay \u{1F44B}',
+                          style: GoogleFonts.nunito(
+                            fontSize: 32,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.textPrimary,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          "Your pup's tail is wagging\u{2014}ready for today's adventure?",
+                          style: GoogleFonts.nunito(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -132,41 +212,47 @@ class _HomeScreenState extends State<HomeScreen> {
             _buildTipCard(),
             const SizedBox(height: 20),
 
-            // Stats
+            // Stats (live from Supabase)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Row(
-                children: const [
-                  Expanded(
-                    child: StatCard(
-                        icon: '\u{1F4C5}',
-                        number: 0,
-                        label: 'Upcoming',
-                        variant: 'blue'),
-                  ),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: StatCard(
-                        icon: '\u{1F550}',
-                        number: 1,
-                        label: 'Active',
-                        variant: 'green'),
-                  ),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: StatCard(
-                        icon: '\u{2705}',
-                        number: 0,
-                        label: 'Completed',
-                        variant: 'gray'),
-                  ),
-                ],
-              ),
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : Row(
+                      children: [
+                        Expanded(
+                          child: StatCard(
+                              icon: '\u{1F4C5}',
+                              number: _upcoming,
+                              label: 'Upcoming',
+                              variant: 'blue'),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: StatCard(
+                              icon: '\u{1F550}',
+                              number: _active,
+                              label: 'Active',
+                              variant: 'green'),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: StatCard(
+                              icon: '\u{2705}',
+                              number: _completed,
+                              label: 'Completed',
+                              variant: 'gray'),
+                        ),
+                      ],
+                    ),
             ),
             const SizedBox(height: 20),
 
             // Active Walk Banner
             _buildActiveWalkBanner(context),
+            const SizedBox(height: 20),
+
+            // Find a Walker Banner
+            _buildFindWalkerBanner(context),
             const SizedBox(height: 20),
 
             // Available Walkers Section
@@ -260,56 +346,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildWalkersList() {
-    if (_loading) {
+    if (_walkers.isEmpty && _loading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 32),
         child: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
-          decoration: BoxDecoration(
-            color: AppColors.red50,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            children: [
-              const Icon(Icons.error_outline, size: 40, color: AppColors.red500),
-              const SizedBox(height: 12),
-              Text(
-                'Could not load walkers',
-                style: GoogleFonts.nunito(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _loading = true;
-                    _error = null;
-                  });
-                  _fetchWalkers();
-                },
-                child: Text(
-                  'Tap to retry',
-                  style: GoogleFonts.nunito(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.orange500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
       );
     }
 
@@ -362,6 +402,47 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: AppColors.textLight,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _error!,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.nunito(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: _loadStats,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.orange500,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildTipCard() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -373,7 +454,7 @@ class _HomeScreenState extends State<HomeScreen> {
             end: Alignment.bottomRight,
             colors: [AppColors.purple50, AppColors.pink50],
           ),
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(
             color: AppColors.purple100.withValues(alpha: 0.5),
           ),
@@ -446,7 +527,7 @@ class _HomeScreenState extends State<HomeScreen> {
               end: Alignment.bottomRight,
               colors: [AppColors.green500, AppColors.emerald400],
             ),
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(AppRadius.card),
             boxShadow: [
               BoxShadow(
                 color: AppColors.green500.withValues(alpha: 0.35),
@@ -566,6 +647,101 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildFindWalkerBanner(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: GestureDetector(
+        onTap: () {
+          // Navigate to find tab
+        },
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [AppColors.orange500, AppColors.orange400],
+            ),
+            borderRadius: BorderRadius.circular(AppRadius.card),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.orange500.withValues(alpha: 0.35),
+                blurRadius: 28,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              Positioned(
+                top: -30,
+                right: -30,
+                child: Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Center(
+                      child: Text('\u{1F50D}', style: TextStyle(fontSize: 26)),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Find a Walker',
+                          style: GoogleFonts.nunito(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Browse trusted walkers near you',
+                          style: GoogleFonts.nunito(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white.withValues(alpha: 0.85),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.arrow_forward,
+                        color: Colors.white, size: 18),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildEmptyState() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -574,7 +750,7 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.symmetric(vertical: 44, horizontal: 20),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(
             color: AppColors.borderDashed,
             width: 2,

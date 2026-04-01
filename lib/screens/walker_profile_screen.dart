@@ -36,6 +36,11 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
       return;
     }
 
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
     try {
       final supabase = Supabase.instance.client;
 

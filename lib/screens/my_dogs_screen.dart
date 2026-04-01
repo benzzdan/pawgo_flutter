@@ -23,6 +23,7 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
   bool _loading = true;
   String? _error;
   bool _hasAnimated = false;
+  bool _isRefreshing = false;
 
   @override
   void initState() {
@@ -169,28 +170,139 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+  Future<void> _onRefresh() async {
+    setState(() => _isRefreshing = true);
+    await _fetchDogs();
+    if (mounted) {
+      setState(() => _isRefreshing = false);
+    }
+  }
+
+  Widget _buildEmptyState(BuildContext context) {
+    final reduceMotion = MediaQuery.of(context).accessibleNavigation;
+
+    Widget illustration = Image.asset(
+      'assets/illustrations/corgi_lying.png',
+      width: 200,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) =>
+          const Text('\u{1F436}', style: TextStyle(fontSize: 48)),
+    );
+
+    // Subtle floating idle animation unless reduce-motion
+    if (!reduceMotion) {
+      illustration = illustration
+          .animate(onPlay: (controller) => controller.repeat(reverse: true))
+          .moveY(begin: 0, end: -2, duration: 3000.ms, curve: Curves.easeInOut);
     }
 
-    if (_error != null) {
-      return Center(
+    Widget content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          illustration,
+          const SizedBox(height: 12),
+          Text(
+            'No pups yet',
+            style: GoogleFonts.nunito(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Add your first furry friend to get started',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.nunito(
+              fontSize: 14,
+              fontWeight: FontWeight.w400,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 32),
+          GestureDetector(
+            onTap: () => _openDogForm(),
+            child: Container(
+              width: double.infinity,
+              height: 52,
+              decoration: BoxDecoration(
+                color: AppColors.orange500,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.orange500.withValues(alpha: 0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.add, color: Colors.white, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Add a Dog',
+                      style: GoogleFonts.nunito(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (!reduceMotion) {
+      content = content
+          .animate()
+          .fadeIn(duration: 400.ms, curve: Curves.easeOut)
+          .scale(
+            begin: const Offset(0.95, 0.95),
+            end: const Offset(1.0, 1.0),
+            duration: 400.ms,
+            curve: Curves.easeOut,
+          );
+    }
+
+    return content;
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
+            const Icon(Icons.wifi_off, size: 48, color: AppColors.gray400),
+            const SizedBox(height: 16),
             Text(
-              'Failed to load dogs',
+              'Unable to load your dogs. Please try again.',
+              textAlign: TextAlign.center,
               style: GoogleFonts.nunito(
                 fontSize: 16,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
                 color: AppColors.textSecondary,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             GestureDetector(
-              onTap: _fetchDogs,
+              onTap: () {
+                setState(() {
+                  _loading = true;
+                  _error = null;
+                });
+                _fetchDogs();
+              },
               child: Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -210,16 +322,53 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.orange500),
       );
     }
 
+    if (_error != null) {
+      return _buildErrorState();
+    }
+
+    if (_dogs.isEmpty) {
+      return _buildEmptyState(context);
+    }
+
     return RefreshIndicator(
-      onRefresh: _fetchDogs,
+      onRefresh: _onRefresh,
+      color: AppColors.orange500,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Pull-to-refresh paw icon indicator
+            if (_isRefreshing)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 8, bottom: 4),
+                  child: Icon(
+                    Icons.pets,
+                    color: AppColors.orange500,
+                    size: 24,
+                  )
+                      .animate(
+                        onPlay: (c) => c.repeat(),
+                      )
+                      .rotate(
+                        duration: 1000.ms,
+                        curve: Curves.easeInOut,
+                      ),
+                ),
+              ),
             // Header
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 10, 24, 20),
@@ -247,49 +396,6 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
                 ],
               ),
             ),
-            // Empty state
-            if (_dogs.isEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 48),
-                  decoration: BoxDecoration(
-                    color: AppColors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        blurRadius: 12,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      const Text('\u{1F436}', style: TextStyle(fontSize: 48)),
-                      const SizedBox(height: 12),
-                      Text(
-                        'No dogs yet',
-                        style: GoogleFonts.nunito(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Add your first furry friend to get started',
-                        style: GoogleFonts.nunito(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textTertiary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
             // Dogs List with staggered entrance animations.
             ..._dogs.asMap().entries.map((entry) {
               final index = entry.key;
@@ -318,7 +424,7 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
                     delay: Duration(milliseconds: index * 100),
                   );
             }),
-            // Add Dog Card — animates as the last staggered item.
+            // Add Dog Card -- animates as the last staggered item.
             Builder(builder: (context) {
               final card = Padding(
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -373,7 +479,6 @@ class _DogCardState extends State<_DogCard>
       vsync: this,
       duration: const Duration(seconds: 3),
     )..repeat(reverse: true);
-
     _idleAnimation = Tween<double>(begin: -0.035, end: 0.035).animate(
       CurvedAnimation(parent: _idleController, curve: Curves.easeInOut),
     );
@@ -607,7 +712,7 @@ class _ShakeOnPressButtonState extends State<_ShakeOnPressButton>
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
-    // Shake: 0 → 2 → -2 → 2 → -2 → 0 pixels.
+    // Shake: 0 -> 2 -> -2 -> 2 -> -2 -> 0 pixels.
     _shakeAnimation = TweenSequence<double>([
       TweenSequenceItem(tween: Tween(begin: 0, end: 2), weight: 1),
       TweenSequenceItem(tween: Tween(begin: 2, end: -2), weight: 1),
@@ -736,17 +841,16 @@ class _InfoColumn extends StatelessWidget {
         Text(
           label,
           style: GoogleFonts.nunito(
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: FontWeight.w600,
             color: AppColors.textTertiary,
           ),
         ),
-        const SizedBox(height: 2),
         Text(
           value,
           style: GoogleFonts.nunito(
             fontSize: 14,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
             color: AppColors.textPrimary,
           ),
         ),
@@ -773,6 +877,7 @@ class _AddDogCard extends StatelessWidget {
           border: Border.all(color: AppColors.borderDashed, width: 2),
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               width: 64,
@@ -786,20 +891,11 @@ class _AddDogCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'Add a Dog',
+              'Add another dog',
               style: GoogleFonts.nunito(
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Register a new furry friend',
-              style: GoogleFonts.nunito(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textTertiary,
+                color: AppColors.textSecondary,
               ),
             ),
           ],

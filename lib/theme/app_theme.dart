@@ -16,32 +16,35 @@ class AppColors {
   static const warmCaramel = Color(0xFFC07D4D);
   static const goldenPaw = Color(0xFFF4A832);
 
-  // Legacy primary aliases (used by existing screens)
-  static const orange500 = Color(0xFFF97316);
+  // Primary — WCAG AA compliant (3.16:1 vs white for large text)
+  static const orange500 = Color(0xFFEA6C10);
   static const orange400 = Color(0xFFFB923C);
   static const orange50 = Color(0xFFFFF7ED);
   static const orange100 = Color(0xFFFFEDD5);
 
-  // Background
+  // Background — warm cream base
   static const background = Color(0xFFFDF8F2);
   static const white = Color(0xFFFFFFFF);
-  static const surface = Color(0xFFF5F5F5);
+  static const surface = Color(0xFFF9F7F4);
+  static const cardBackground = Color(0xFFFFFFFF);
+  static const inputFill = Color(0xFFF9F7F4);
 
   // Dark mode backgrounds
-  static const darkBackground = Color(0xFF1A1A1A);
-  static const darkSurface = Color(0xFF2A2A2A);
-  static const darkCard = Color(0xFF333333);
+  static const darkBackground = Color(0xFF1A1A1E);
+  static const darkSurface = Color(0xFF242428);
+  static const darkCard = Color(0xFF2A2A2E);
+  static const darkInputFill = Color(0xFF2E2E32);
 
-  // Text
-  static const textPrimary = Color(0xFF1A1A1A);
-  static const textSecondary = Color(0xFF888888);
-  static const textTertiary = Color(0xFFAAAAAA);
-  static const textLight = Color(0xFFBBBBBB);
+  // Text — WCAG AA compliant on background (#FDF8F2) and white
+  static const textPrimary = Color(0xFF1A1A1A);   // 16.48:1 on background
+  static const textSecondary = Color(0xFF6F6F6F);  // 4.76:1 on background
+  static const textTertiary = Color(0xFF8A8A8A);   // 3.45:1 on white (decorative/non-essential)
+  static const textLight = Color(0xFFAAAAAA);       // Placeholder/decorative only
 
   // Dark mode text
-  static const darkTextPrimary = Color(0xFFF5F5F5);
-  static const darkTextSecondary = Color(0xFFAAAAAA);
-  static const darkTextTertiary = Color(0xFF888888);
+  static const darkTextPrimary = Color(0xFFF0F0F0);
+  static const darkTextSecondary = Color(0xFF9E9E9E);
+  static const darkTextTertiary = Color(0xFF757575);
 
   // Borders
   static const border = Color(0xFFF0ECE6);
@@ -50,8 +53,9 @@ class AppColors {
   static const divider = Color(0xFFE0E0E0);
 
   // Dark mode borders
-  static const darkBorder = Color(0xFF444444);
-  static const darkDivider = Color(0xFF3A3A3A);
+  static const darkBorder = Color(0xFF3A3A3E);
+  static const darkBorderLight = Color(0xFF333336);
+  static const darkDivider = Color(0xFF3A3A3E);
 
   // Green
   static const green500 = Color(0xFF22C55E);
@@ -100,6 +104,50 @@ class AppColors {
   static const gray100 = Color(0xFFF3F4F6);
   static const gray300 = Color(0xFFD1D5DB);
   static const gray400 = Color(0xFF9CA3AF);
+}
+
+/// Design-system border radii for the minimalistic theme.
+class AppRadius {
+  static const double button = 12;
+  static const double card = 16;
+  static const double modal = 24;
+  static const double bottomSheet = 24;
+  static const double input = 12;
+}
+
+/// Design-system shadows — soft, no hard borders.
+class AppShadows {
+  static List<BoxShadow> get card => [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.05),
+          blurRadius: 12,
+          offset: const Offset(0, 2),
+        ),
+      ];
+
+  static List<BoxShadow> get cardPressed => [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.08),
+          blurRadius: 14,
+          offset: const Offset(0, 3),
+        ),
+      ];
+
+  static List<BoxShadow> get elevated => [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.08),
+          blurRadius: 16,
+          offset: const Offset(0, 4),
+        ),
+      ];
+
+  static List<BoxShadow> get subtle => [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.03),
+          blurRadius: 8,
+          offset: const Offset(0, 1),
+        ),
+      ];
 }
 
 class AppTheme {
@@ -193,17 +241,32 @@ class AppTheme {
         appBarTheme: AppBarTheme(
           backgroundColor: AppColors.white,
           elevation: 0,
+          surfaceTintColor: Colors.transparent,
           titleTextStyle: _baseTextStyle.copyWith(
             fontSize: 20,
             fontWeight: FontWeight.w800,
             color: AppColors.textPrimary,
           ),
         ),
+        cardTheme: CardThemeData(
+          color: AppColors.cardBackground,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.card),
+          ),
+          margin: EdgeInsets.zero,
+        ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            minimumSize: const Size(48, 48),
+            backgroundColor: AppColors.orange500,
+            foregroundColor: AppColors.white,
+            elevation: 0,
+            minimumSize: const Size(double.infinity, 56),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.button),
+            ),
             textStyle: _baseTextStyle.copyWith(
-              fontSize: 15,
+              fontSize: 16,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -215,7 +278,17 @@ class AppTheme {
         ),
         outlinedButtonTheme: OutlinedButtonThemeData(
           style: OutlinedButton.styleFrom(
-            minimumSize: const Size(48, 48),
+            foregroundColor: AppColors.orange500,
+            elevation: 0,
+            minimumSize: const Size(double.infinity, 56),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.button),
+            ),
+            side: const BorderSide(color: AppColors.orange500, width: 1.5),
+            textStyle: _baseTextStyle.copyWith(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
         iconButtonTheme: IconButtonThemeData(
@@ -223,11 +296,59 @@ class AppTheme {
             minimumSize: const Size(48, 48),
           ),
         ),
-        inputDecorationTheme: const InputDecorationTheme(
-          contentPadding: EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: 14,
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: AppColors.inputFill,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.input),
+            borderSide: BorderSide.none,
           ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.input),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.input),
+            borderSide: const BorderSide(
+              color: AppColors.orange400,
+              width: 1.5,
+            ),
+          ),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          hintStyle: _baseTextStyle.copyWith(
+            color: AppColors.textTertiary,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        bottomSheetTheme: BottomSheetThemeData(
+          backgroundColor: AppColors.white,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(AppRadius.bottomSheet),
+            ),
+          ),
+          elevation: 0,
+        ),
+        dividerTheme: const DividerThemeData(
+          color: AppColors.borderLight,
+          thickness: 1,
+          space: 1,
+        ),
+        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+          backgroundColor: AppColors.white,
+          elevation: 0,
+          selectedItemColor: AppColors.orange500,
+          unselectedItemColor: AppColors.textTertiary,
+        ),
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: PawgoPageTransitionsBuilder(),
+            TargetPlatform.iOS: PawgoPageTransitionsBuilder(),
+            TargetPlatform.macOS: PawgoPageTransitionsBuilder(),
+            TargetPlatform.windows: PawgoPageTransitionsBuilder(),
+            TargetPlatform.linux: PawgoPageTransitionsBuilder(),
+          },
         ),
       );
 
@@ -255,17 +376,32 @@ class AppTheme {
         appBarTheme: AppBarTheme(
           backgroundColor: AppColors.darkSurface,
           elevation: 0,
+          surfaceTintColor: Colors.transparent,
           titleTextStyle: _baseTextStyle.copyWith(
             fontSize: 20,
             fontWeight: FontWeight.w800,
             color: AppColors.darkTextPrimary,
           ),
         ),
+        cardTheme: CardThemeData(
+          color: AppColors.darkCard,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.card),
+          ),
+          margin: EdgeInsets.zero,
+        ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            minimumSize: const Size(48, 48),
+            backgroundColor: AppColors.orange500,
+            foregroundColor: AppColors.white,
+            elevation: 0,
+            minimumSize: const Size(double.infinity, 56),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.button),
+            ),
             textStyle: _baseTextStyle.copyWith(
-              fontSize: 15,
+              fontSize: 16,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -277,7 +413,17 @@ class AppTheme {
         ),
         outlinedButtonTheme: OutlinedButtonThemeData(
           style: OutlinedButton.styleFrom(
-            minimumSize: const Size(48, 48),
+            foregroundColor: AppColors.orange400,
+            elevation: 0,
+            minimumSize: const Size(double.infinity, 56),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.button),
+            ),
+            side: const BorderSide(color: AppColors.orange400, width: 1.5),
+            textStyle: _baseTextStyle.copyWith(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
         iconButtonTheme: IconButtonThemeData(
@@ -285,17 +431,120 @@ class AppTheme {
             minimumSize: const Size(48, 48),
           ),
         ),
-        inputDecorationTheme: const InputDecorationTheme(
-          contentPadding: EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: 14,
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: AppColors.darkInputFill,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.input),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.input),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.input),
+            borderSide: const BorderSide(
+              color: AppColors.orange400,
+              width: 1.5,
+            ),
+          ),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          hintStyle: _baseTextStyle.copyWith(
+            color: AppColors.darkTextTertiary,
+            fontWeight: FontWeight.w500,
           ),
         ),
-        cardTheme: const CardThemeData(
-          color: AppColors.darkCard,
+        bottomSheetTheme: BottomSheetThemeData(
+          backgroundColor: AppColors.darkSurface,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(AppRadius.bottomSheet),
+            ),
+          ),
+          elevation: 0,
         ),
         dividerTheme: const DividerThemeData(
           color: AppColors.darkDivider,
+          thickness: 1,
+          space: 1,
+        ),
+        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+          backgroundColor: AppColors.darkSurface,
+          elevation: 0,
+          selectedItemColor: AppColors.orange400,
+          unselectedItemColor: AppColors.darkTextTertiary,
+        ),
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: PawgoPageTransitionsBuilder(),
+            TargetPlatform.iOS: PawgoPageTransitionsBuilder(),
+            TargetPlatform.macOS: PawgoPageTransitionsBuilder(),
+            TargetPlatform.windows: PawgoPageTransitionsBuilder(),
+            TargetPlatform.linux: PawgoPageTransitionsBuilder(),
+          },
         ),
       );
+}
+
+/// Custom page transition: fadeIn + slideUp on push, fadeOut + slideDown on pop.
+class PawgoPageTransitionsBuilder extends PageTransitionsBuilder {
+  const PawgoPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final reduceMotion = MediaQuery.of(context).accessibleNavigation;
+    if (reduceMotion) return child;
+
+    const curve = Cubic(0.25, 0.1, 0.25, 1.0); // smooth ease
+
+    // Incoming page: fade + slide up
+    final slideTween = Tween<Offset>(
+      begin: const Offset(0, 0.04),
+      end: Offset.zero,
+    ).chain(CurveTween(curve: curve));
+
+    final fadeTween = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).chain(CurveTween(curve: curve));
+
+    // Outgoing page: subtle fade out
+    final secondaryFadeTween = Tween<double>(
+      begin: 1.0,
+      end: 0.92,
+    ).chain(CurveTween(curve: curve));
+
+    return FadeTransition(
+      opacity: secondaryAnimation.drive(secondaryFadeTween),
+      child: SlideTransition(
+        position: animation.drive(slideTween),
+        child: FadeTransition(
+          opacity: animation.drive(fadeTween),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// Custom route with slower duration for smooth transitions.
+class PawgoPageRoute<T> extends MaterialPageRoute<T> {
+  PawgoPageRoute({
+    required super.builder,
+    super.settings,
+  });
+
+  @override
+  Duration get transitionDuration => const Duration(milliseconds: 500);
+
+  @override
+  Duration get reverseTransitionDuration => const Duration(milliseconds: 450);
 }

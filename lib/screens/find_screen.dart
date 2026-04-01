@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/models/mock_data.dart';
+import 'package:pawgo/services/walker_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class FindScreen extends StatefulWidget {
@@ -12,10 +13,42 @@ class FindScreen extends StatefulWidget {
 
 class _FindScreenState extends State<FindScreen> {
   String _selectedFilter = 'all';
+  List<Walker> _walkers = [];
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWalkers();
+  }
+
+  Future<void> _loadWalkers() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final walkers = await WalkerService.fetchWalkers();
+      if (mounted) {
+        setState(() {
+          _walkers = walkers;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Unable to load walkers. Please try again.';
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   List<Walker> get _filteredWalkers {
-    return MockData.walkers.where((w) {
-      if (_selectedFilter == 'available') return w.availableColor == 'green';
+    return _walkers.where((w) {
+      if (_selectedFilter == 'available') return w.isEnabled;
       if (_selectedFilter == 'top-rated') return w.rating >= 4.9;
       return true;
     }).toList();
@@ -32,13 +65,28 @@ class _FindScreenState extends State<FindScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Find a Walker',
-                style: GoogleFonts.nunito(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.textPrimary,
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Find a Walker',
+                      style: GoogleFonts.nunito(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.asset(
+                      'assets/illustrations/corgi_wagging.png',
+                      width: 60,
+                      height: 60,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
               // Search Bar
@@ -105,32 +153,118 @@ class _FindScreenState extends State<FindScreen> {
           ),
         ),
         // Results Count
-        Container(
-          width: double.infinity,
-          color: AppColors.background,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          child: Text(
-            '${_filteredWalkers.length} walker${_filteredWalkers.length != 1 ? 's' : ''} nearby',
-            style: GoogleFonts.nunito(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textSecondary,
+        if (!_isLoading && _error == null)
+          Container(
+            width: double.infinity,
+            color: AppColors.background,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            child: Text(
+              '${_filteredWalkers.length} walker${_filteredWalkers.length != 1 ? 's' : ''} nearby',
+              style: GoogleFonts.nunito(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
             ),
           ),
-        ),
-        // Walker Cards
-        Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-            itemCount: _filteredWalkers.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 24),
-            itemBuilder: (context, index) {
-              final walker = _filteredWalkers[index];
-              return _WalkerCard(walker: walker);
-            },
+        // Content area: loading / error / empty / list
+        Expanded(child: _buildContent()),
+      ],
+    );
+  }
+
+  Widget _buildContent() {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.orange500),
+      );
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.wifi_off, size: 48, color: AppColors.gray400),
+              const SizedBox(height: 16),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.nunito(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              GestureDetector(
+                onTap: _loadWalkers,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.orange500,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'Retry',
+                    style: GoogleFonts.nunito(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-      ],
+      );
+    }
+
+    if (_filteredWalkers.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.pets,
+                  size: 56, color: Colors.grey.withValues(alpha: 0.3)),
+              const SizedBox(height: 14),
+              Text(
+                'No walkers found nearby',
+                style: GoogleFonts.nunito(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textLight,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Try adjusting your filters or check back later',
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      itemCount: _filteredWalkers.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 24),
+      itemBuilder: (context, index) {
+        final walker = _filteredWalkers[index];
+        return _WalkerCard(walker: walker);
+      },
     );
   }
 }
@@ -183,14 +317,8 @@ class _WalkerCard extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: AppColors.white,
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 12,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          boxShadow: AppShadows.card,
         ),
         child: Column(
           children: [
@@ -213,12 +341,24 @@ class _WalkerCard extends StatelessWidget {
                         ),
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      child: Center(
-                        child: Text(walker.avatar,
-                            style: const TextStyle(fontSize: 30)),
-                      ),
+                      child: walker.avatarUrl != null
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(16),
+                              child: Image.network(
+                                walker.avatarUrl!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const Center(
+                                  child: Text('🚶',
+                                      style: TextStyle(fontSize: 30)),
+                                ),
+                              ),
+                            )
+                          : const Center(
+                              child:
+                                  Text('🚶', style: TextStyle(fontSize: 30)),
+                            ),
                     ),
-                    if (walker.verified)
+                    if (walker.backgroundChecked)
                       Positioned(
                         bottom: -4,
                         right: -4,
@@ -244,15 +384,18 @@ class _WalkerCard extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Text(
-                            walker.name,
-                            style: GoogleFonts.nunito(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary,
+                          Flexible(
+                            child: Text(
+                              walker.name,
+                              style: GoogleFonts.nunito(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textPrimary,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          if (walker.backgroundCheck) ...[
+                          if (walker.backgroundChecked) ...[
                             const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(
@@ -288,27 +431,16 @@ class _WalkerCard extends StatelessWidget {
                               size: 14, color: AppColors.orange500),
                           const SizedBox(width: 4),
                           Text(
-                            '${walker.rating}',
+                            walker.displayRating,
                             style: GoogleFonts.nunito(
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
                               color: AppColors.textPrimary,
                             ),
                           ),
-                          Text(
-                            ' (${walker.reviews})',
-                            style: GoogleFonts.nunito(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
                           const SizedBox(width: 12),
-                          const Icon(Icons.location_on,
-                              size: 12, color: AppColors.textSecondary),
-                          const SizedBox(width: 4),
                           Text(
-                            walker.distance,
+                            '${walker.totalWalks} walks',
                             style: GoogleFonts.nunito(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
@@ -325,7 +457,7 @@ class _WalkerCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      '\$${walker.price}',
+                      walker.displayPrice,
                       style: GoogleFonts.nunito(
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
@@ -363,12 +495,12 @@ class _WalkerCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Center(
-                      child: Text('\u{1F6B6}', style: TextStyle(fontSize: 14)),
+                      child: Text('🚶', style: TextStyle(fontSize: 14)),
                     ),
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    '${walker.walks}',
+                    '${walker.totalWalks}',
                     style: GoogleFonts.nunito(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -392,12 +524,12 @@ class _WalkerCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Center(
-                      child: Text('\u{26A1}', style: TextStyle(fontSize: 14)),
+                      child: Text('⚡', style: TextStyle(fontSize: 14)),
                     ),
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    walker.responseTime,
+                    walker.displayExperience,
                     style: GoogleFonts.nunito(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -408,32 +540,24 @@ class _WalkerCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            // Specialties & Availability
+            // Bio preview & availability
             Row(
               children: [
-                Expanded(
-                  child: Wrap(
-                    spacing: 8,
-                    children: walker.specialties
-                        .map((s) => Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: AppColors.orange50,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                s,
-                                style: GoogleFonts.nunito(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.orange500,
-                                ),
-                              ),
-                            ))
-                        .toList(),
-                  ),
-                ),
+                if (walker.bio != null && walker.bio!.isNotEmpty)
+                  Expanded(
+                    child: Text(
+                      walker.bio!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.nunito(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  )
+                else
+                  const Spacer(),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -441,25 +565,21 @@ class _WalkerCard extends StatelessWidget {
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: walker.availableColor == 'green'
+                        color: walker.isEnabled
                             ? AppColors.green500
-                            : walker.availableColor == 'blue'
-                                ? AppColors.blue500
-                                : AppColors.gray400,
+                            : AppColors.gray400,
                         shape: BoxShape.circle,
                       ),
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      walker.availability,
+                      walker.isEnabled ? 'Available' : 'Unavailable',
                       style: GoogleFonts.nunito(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: walker.availableColor == 'green'
+                        color: walker.isEnabled
                             ? AppColors.green600
-                            : walker.availableColor == 'blue'
-                                ? AppColors.blue600
-                                : AppColors.textSecondary,
+                            : AppColors.textSecondary,
                       ),
                     ),
                   ],

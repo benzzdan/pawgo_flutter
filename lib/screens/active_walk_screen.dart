@@ -4,13 +4,24 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
+import 'package:pawgo/models/mock_data.dart';
+import 'package:pawgo/services/tracking_service.dart';
+import 'package:pawgo/services/booking_status_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/analytics_service.dart';
 
 class ActiveWalkScreen extends StatefulWidget {
-  const ActiveWalkScreen({super.key});
+  const ActiveWalkScreen({
+    super.key,
+    this.trackingService,
+    this.bookingStatusService,
+  });
+
+  /// Optional injected service for testing.
+  final TrackingService? trackingService;
+  final BookingStatusService? bookingStatusService;
 
   @override
   State<ActiveWalkScreen> createState() => _ActiveWalkScreenState();
@@ -59,6 +70,21 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
   // Status updates from realtime
   final List<Map<String, dynamic>> _liveUpdates = [];
 
+  late TrackingService _trackingService;
+  StreamSubscription<WalkLocation>? _locationSub;
+  StreamSubscription<TrackingConnectionState>? _connectionSub;
+
+  late BookingStatusService _bookingStatusService;
+  StreamSubscription<BookingStatusUpdate>? _bookingStatusSub;
+  String _bookingStatus = 'walk_started';
+
+  final List<WalkLocation> _locations = [];
+  WalkLocation? _latestLocation;
+  TrackingConnectionState _connectionState =
+      TrackingConnectionState.disconnected;
+  bool _isLoading = true;
+  String? _error;
+
   @override
   void initState() {
     super.initState();
@@ -69,6 +95,10 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     _pulseAnimation = Tween<double>(begin: 0.4, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+
+    _trackingService = widget.trackingService ?? TrackingService();
+    _bookingStatusService =
+        widget.bookingStatusService ?? BookingStatusService();
   }
 
   @override
@@ -89,7 +119,67 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
       _loadBookingData();
       _loadExistingLocations();
       _subscribeToLocations();
+      _initTrackingService(_bookingId!);
+    } else {
+      setState(() {
+        _isLoading = false;
+        _error = 'No booking ID provided';
+      });
     }
+  }
+
+  Future<void> _initTrackingService(String bookingId) async {
+    // Listen for connection state changes
+    _connectionSub =
+        _trackingService.connectionStream.listen((state) {
+      if (mounted) setState(() => _connectionState = state);
+    });
+
+    // Listen for new GPS locations from TrackingService
+    _locationSub = _trackingService.locationStream.listen((location) {
+      if (mounted) {
+        setState(() {
+          _locations.add(location);
+          _latestLocation = location;
+        });
+      }
+    });
+
+    // Fetch existing locations via TrackingService
+    try {
+      final existing = await _trackingService.fetchLocations(bookingId);
+      if (mounted) {
+        setState(() {
+          _locations.addAll(existing);
+          if (existing.isNotEmpty) _latestLocation = existing.last;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = 'Failed to load tracking data';
+        });
+      }
+    }
+
+    // Subscribe to live updates via TrackingService
+    _trackingService.subscribe(bookingId);
+
+    // Subscribe to booking status changes
+    _bookingStatusSub =
+        _bookingStatusService.statusStream.listen((update) {
+      if (mounted) {
+        setState(() => _bookingStatus = update.newStatus);
+        if (update.newStatus == 'walk_completed') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Walk completed!')),
+          );
+        }
+      }
+    });
+    _bookingStatusService.subscribeToBooking(bookingId);
   }
 
   @override
@@ -100,6 +190,11 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     _locationChannel?.unsubscribe();
     _bookingChannel?.unsubscribe();
     _mapController?.dispose();
+    _locationSub?.cancel();
+    _connectionSub?.cancel();
+    _bookingStatusSub?.cancel();
+    _trackingService.dispose();
+    _bookingStatusService.dispose();
     // Note: GPS broadcast is NOT stopped here intentionally.
     // The service is a singleton that continues in the background
     // so GPS keeps broadcasting even if the user navigates away.
@@ -392,30 +487,133 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
       body: SafeArea(
         child: Column(
           children: [
+            // Connection status banner
+            if (_connectionState == TrackingConnectionState.error ||
+                _connectionState == TrackingConnectionState.disconnected &&
+                    _bookingId != null &&
+                    !_isLoading)
+              _buildConnectionBanner(),
             // Header
             _buildHeader(),
             Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    _buildMapArea(),
-                    const SizedBox(height: 16),
-                    _buildWalkerInfo(),
-                    const SizedBox(height: 16),
-                    _buildStatsGrid(),
-                    if (_isWalker) ...[
-                      const SizedBox(height: 16),
-                      _buildEndWalkButton(),
-                    ],
-                    const SizedBox(height: 16),
-                    _buildTabNav(),
-                    const SizedBox(height: 16),
-                    _buildTabContent(),
-                    const SizedBox(height: 24),
-                  ],
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null && _routePoints.isEmpty && _locations.isEmpty
+                      ? _buildErrorState()
+                      : SingleChildScrollView(
+                          child: Column(
+                            children: [
+                              _buildMapArea(),
+                              const SizedBox(height: 16),
+                              _buildWalkerInfo(),
+                              const SizedBox(height: 16),
+                              _buildStatsGrid(),
+                              if (_isWalker) ...[
+                                const SizedBox(height: 16),
+                                _buildEndWalkButton(),
+                              ],
+                              const SizedBox(height: 16),
+                              _buildTabNav(),
+                              const SizedBox(height: 16),
+                              _buildTabContent(),
+                              const SizedBox(height: 24),
+                            ],
+                          ),
+                        ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConnectionBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: const Color(0xFFFEF3C7),
+      child: Row(
+        children: [
+          const Icon(Icons.wifi_off, size: 18, color: Color(0xFF92400E)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Live connection lost. Using periodic updates.',
+              style: GoogleFonts.nunito(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF92400E),
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: () {
+              if (_bookingId != null) {
+                _trackingService.dispose();
+                _trackingService = TrackingService();
+                _connectionSub?.cancel();
+                _locationSub?.cancel();
+                _initTrackingService(_bookingId!);
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF92400E),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'Retry',
+                style: GoogleFonts.nunito(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.location_off, size: 64, color: AppColors.textTertiary),
+            const SizedBox(height: 16),
+            Text(
+              _error ?? 'Something went wrong',
+              style: GoogleFonts.nunito(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            if (_bookingId != null)
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _isLoading = true;
+                    _error = null;
+                  });
+                  _initTrackingService(_bookingId!);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.orange500,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text('Retry'),
+              ),
           ],
         ),
       ),
@@ -441,11 +639,15 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
               ),
               const SizedBox(height: 2),
               Text(
-                'Live tracking',
+                _bookingStatus == 'walk_completed'
+                    ? 'Walk completed'
+                    : 'Live tracking',
                 style: GoogleFonts.nunito(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textSecondary,
+                  color: _bookingStatus == 'walk_completed'
+                      ? AppColors.green600
+                      : AppColors.textSecondary,
                 ),
               ),
             ],
@@ -560,13 +762,25 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: _gpsSignalLost ? AppColors.amber500 : AppColors.red500,
+                        color: _gpsSignalLost
+                            ? AppColors.amber500
+                            : _connectionState == TrackingConnectionState.connected
+                                ? AppColors.green500
+                                : _connectionState == TrackingConnectionState.error
+                                    ? AppColors.red500
+                                    : AppColors.amber500,
                         shape: BoxShape.circle,
                       ),
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      _gpsSignalLost ? 'SIGNAL LOST' : 'LIVE',
+                      _gpsSignalLost
+                          ? 'SIGNAL LOST'
+                          : _connectionState == TrackingConnectionState.connected
+                              ? 'LIVE'
+                              : _connectionState == TrackingConnectionState.connecting
+                                  ? 'CONNECTING'
+                                  : 'OFFLINE',
                       style: GoogleFonts.nunito(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -634,6 +848,28 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                       ),
                     );
                   },
+                ),
+              ),
+            // GPS coordinate display (when not walker and has location)
+            if (!_isWalker && _latestLocation != null)
+              Positioned(
+                top: 12,
+                right: 12,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${_latestLocation!.latitude.toStringAsFixed(4)}, ${_latestLocation!.longitude.toStringAsFixed(4)}',
+                    style: GoogleFonts.nunito(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
                 ),
               ),
             // GPS Signal Lost Banner
@@ -818,7 +1054,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
             iconColor: AppColors.purple500,
             bgGradient: const [AppColors.purple50, Color(0x80F3E8FF)],
             value: '${_routePoints.length}',
-            label: 'points',
+            label: 'GPS points',
           ),
         ],
       ),
@@ -901,9 +1137,9 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
             ),
             const SizedBox(width: 6),
             _TabButton(
-              label: '\u{1F4A9} Activity',
-              isSelected: _activeTab == 'activity',
-              onTap: () => setState(() => _activeTab = 'activity'),
+              label: '\u{1F4CD} GPS Log',
+              isSelected: _activeTab == 'gps',
+              onTap: () => setState(() => _activeTab = 'gps'),
             ),
           ],
         ),
@@ -931,12 +1167,32 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
             ? _buildUpdatesTab()
             : _activeTab == 'photos'
                 ? _buildPhotosTab()
-                : _buildActivityTab(),
+                : _buildGpsLogTab(),
       ),
     );
   }
 
   Widget _buildUpdatesTab() {
+    if (_liveUpdates.isEmpty && _routePoints.isEmpty && _locations.isEmpty) {
+      return Column(
+        children: [
+          const SizedBox(height: 24),
+          Icon(Icons.location_searching,
+              size: 48, color: AppColors.textTertiary.withValues(alpha: 0.5)),
+          const SizedBox(height: 12),
+          Text(
+            'Waiting for GPS updates...',
+            style: GoogleFonts.nunito(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+      );
+    }
+
     if (_liveUpdates.isEmpty) {
       // Show default status based on walk state
       final updates = <Map<String, dynamic>>[];
@@ -1053,28 +1309,120 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
             color: AppColors.textPrimary,
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         Center(
-          child: Text(
-            'Photos shared during the walk will appear here.',
+          child: Column(
+            children: [
+              Icon(Icons.photo_camera_outlined,
+                  size: 48, color: AppColors.textTertiary.withValues(alpha: 0.5)),
+              const SizedBox(height: 8),
+              Text(
+                'Photos from the walk will appear here',
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _buildGpsLogTab() {
+    if (_routePoints.isEmpty && _locations.isEmpty) {
+      return Column(
+        children: [
+          const SizedBox(height: 24),
+          Text(
+            'No GPS data yet',
             style: GoogleFonts.nunito(
               fontSize: 14,
               fontWeight: FontWeight.w600,
               color: AppColors.textSecondary,
             ),
-            textAlign: TextAlign.center,
           ),
-        ),
-      ],
-    );
-  }
+          const SizedBox(height: 24),
+        ],
+      );
+    }
 
-  Widget _buildActivityTab() {
+    // Show GPS log from locations if available, otherwise from routePoints
+    if (_locations.isNotEmpty) {
+      final displayLocations = _locations.reversed.take(10).toList();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'GPS Log',
+                style: GoogleFonts.nunito(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              Text(
+                '${_locations.length} points',
+                style: GoogleFonts.nunito(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...displayLocations.map((loc) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.location_on,
+                          size: 14, color: AppColors.orange500),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${loc.latitude.toStringAsFixed(6)}, ${loc.longitude.toStringAsFixed(6)}',
+                          style: GoogleFonts.nunito(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '${loc.recordedAt.hour}:${loc.recordedAt.minute.toString().padLeft(2, '0')}:${loc.recordedAt.second.toString().padLeft(2, '0')}',
+                        style: GoogleFonts.nunito(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )),
+        ],
+      );
+    }
+
+    // Fallback: show route points count
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Bathroom Activity Log',
+          'GPS Log',
           style: GoogleFonts.nunito(
             fontSize: 16,
             fontWeight: FontWeight.w800,
@@ -1082,15 +1430,12 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
           ),
         ),
         const SizedBox(height: 12),
-        Center(
-          child: Text(
-            'Bathroom updates will appear here during the walk.',
-            style: GoogleFonts.nunito(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textSecondary,
-            ),
-            textAlign: TextAlign.center,
+        Text(
+          '${_routePoints.length} GPS points recorded',
+          style: GoogleFonts.nunito(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textSecondary,
           ),
         ),
       ],

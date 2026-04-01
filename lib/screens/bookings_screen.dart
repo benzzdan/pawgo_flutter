@@ -1,13 +1,18 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:pawgo/services/booking_status_service.dart';
 
 class BookingsScreen extends StatefulWidget {
-  const BookingsScreen({super.key});
+  const BookingsScreen({super.key, this.bookingStatusService});
+
+  /// Optional injected service for testing.
+  final BookingStatusService? bookingStatusService;
 
   @override
   State<BookingsScreen> createState() => _BookingsScreenState();
@@ -20,18 +25,29 @@ class _BookingsScreenState extends State<BookingsScreen> {
   String? _error;
   RealtimeChannel? _channel;
 
+  late BookingStatusService _statusService;
+  StreamSubscription<BookingStatusUpdate>? _statusSub;
+  StreamSubscription<BookingStatusConnectionState>? _connectionSub;
+  BookingStatusConnectionState _connectionState =
+      BookingStatusConnectionState.disconnected;
+
   final _supabase = Supabase.instance.client;
 
   @override
   void initState() {
     super.initState();
+    _statusService = widget.bookingStatusService ?? BookingStatusService();
     _fetchBookings();
     _subscribeToUpdates();
+    _subscribeToStatusService();
   }
 
   @override
   void dispose() {
     _channel?.unsubscribe();
+    _statusSub?.cancel();
+    _connectionSub?.cancel();
+    _statusService.dispose();
     super.dispose();
   }
 
@@ -110,6 +126,20 @@ class _BookingsScreenState extends State<BookingsScreen> {
     _channel!.subscribe();
   }
 
+  void _subscribeToStatusService() {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    _connectionSub = _statusService.connectionStream.listen((state) {
+      if (mounted) setState(() => _connectionState = state);
+    });
+
+    _statusService.subscribe(
+      filterColumn: 'owner_id',
+      filterValue: userId,
+    );
+  }
+
   List<Map<String, dynamic>> get _filteredBookings {
     switch (_selectedTab) {
       case 'upcoming':
@@ -136,11 +166,132 @@ class _BookingsScreenState extends State<BookingsScreen> {
     }
   }
 
+  Widget _buildEmptyState(BuildContext context) {
+    final reduceMotion = MediaQuery.of(context).accessibleNavigation;
+
+    Widget illustration = ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Image.asset(
+        'assets/illustrations/corgi_sitting.png',
+        width: 150,
+        fit: BoxFit.contain,
+      ),
+    );
+
+    if (!reduceMotion) {
+      illustration = illustration
+          .animate(onPlay: (controller) => controller.repeat(reverse: true))
+          .moveY(
+              begin: 0, end: -2, duration: 3000.ms, curve: Curves.easeInOut);
+    }
+
+    Widget content = Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            illustration,
+            const SizedBox(height: 24),
+            Text(
+              _selectedTab == 'upcoming'
+                  ? 'No upcoming bookings'
+                  : _selectedTab == 'past'
+                      ? 'No past walks yet'
+                      : 'No cancelled bookings',
+              style: GoogleFonts.nunito(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Book a walk and your pup will thank you',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.nunito(
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (!reduceMotion) {
+      content = content
+          .animate()
+          .fadeIn(duration: 400.ms, curve: Curves.easeOut)
+          .scale(
+            begin: const Offset(0.95, 0.95),
+            end: const Offset(1.0, 1.0),
+            duration: 400.ms,
+            curve: Curves.easeOut,
+          );
+    }
+
+    return content;
+  }
+
+  Widget _buildConnectionBanner() {
+    if (_connectionState == BookingStatusConnectionState.connected ||
+        _connectionState == BookingStatusConnectionState.connecting) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: _connectionState == BookingStatusConnectionState.error
+          ? const Color(0xFFFEF2F2)
+          : const Color(0xFFFFFBEB),
+      child: Row(
+        children: [
+          Icon(
+            _connectionState == BookingStatusConnectionState.error
+                ? Icons.error_outline
+                : Icons.wifi_off,
+            size: 16,
+            color: _connectionState == BookingStatusConnectionState.error
+                ? const Color(0xFFDC2626)
+                : const Color(0xFFF59E0B),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Live updates unavailable. Tap to refresh.',
+              style: GoogleFonts.nunito(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _connectionState == BookingStatusConnectionState.error
+                    ? const Color(0xFFDC2626)
+                    : const Color(0xFFF59E0B),
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: _fetchBookings,
+            child: Icon(
+              Icons.refresh,
+              size: 18,
+              color: _connectionState == BookingStatusConnectionState.error
+                  ? const Color(0xFFDC2626)
+                  : const Color(0xFFF59E0B),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Connection banner
+        _buildConnectionBanner(),
         // Header
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 10, 24, 20),
@@ -251,27 +402,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
     final filtered = _filteredBookings;
 
     if (filtered.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('📋', style: const TextStyle(fontSize: 48)),
-            const SizedBox(height: 12),
-            Text(
-              _selectedTab == 'upcoming'
-                  ? 'No upcoming bookings'
-                  : _selectedTab == 'past'
-                      ? 'No past walks yet'
-                      : 'No cancelled bookings',
-              style: GoogleFonts.nunito(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
-      );
+      return _buildEmptyState(context);
     }
 
     return RefreshIndicator(
@@ -899,7 +1030,7 @@ class _BookingCard extends StatelessWidget {
                 iconColor: AppColors.purple600,
                 bgColor: AppColors.purple50,
                 text:
-                    '${DateFormat('h:mm a').format(scheduledAt)}${duration != null ? ' · $duration min' : ''}',
+                    '${DateFormat('h:mm a').format(scheduledAt)}${duration != null ? ' \u{00B7} $duration min' : ''}',
               ),
             ],
             // Price

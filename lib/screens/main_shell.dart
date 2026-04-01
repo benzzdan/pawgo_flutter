@@ -22,6 +22,8 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _ownerIndex = 0;
   int _walkerIndex = 0;
+  int _previousOwnerIndex = 0;
+  int _previousWalkerIndex = 0;
 
   final _roleService = RoleService.instance;
 
@@ -58,9 +60,27 @@ class _MainShellState extends State<MainShell> {
   bool get _isWalkerMode =>
       _roleService.activeRole.value == ActiveRole.walker;
 
+  void _onOwnerTabTap(int index) {
+    if (index == _ownerIndex) return;
+    setState(() {
+      _previousOwnerIndex = _ownerIndex;
+      _ownerIndex = index;
+    });
+  }
+
+  void _onWalkerTabTap(int index) {
+    if (index == _walkerIndex) return;
+    setState(() {
+      _previousWalkerIndex = _walkerIndex;
+      _walkerIndex = index;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.of(context).accessibleNavigation;
     final currentIndex = _isWalkerMode ? _walkerIndex : _ownerIndex;
+    final previousIndex = _isWalkerMode ? _previousWalkerIndex : _previousOwnerIndex;
     final screens = _isWalkerMode ? _walkerScreens : _ownerScreens;
 
     return Scaffold(
@@ -69,16 +89,45 @@ class _MainShellState extends State<MainShell> {
         child: Column(
           children: [
             const TopBar(),
-            Expanded(child: screens[currentIndex]),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: reduceMotion
+                    ? Duration.zero
+                    : const Duration(milliseconds: 200),
+                switchInCurve: Curves.easeInOut,
+                switchOutCurve: Curves.easeInOut,
+                transitionBuilder: (child, animation) {
+                  if (reduceMotion) return child;
+
+                  final isForward = currentIndex > previousIndex;
+                  final slideOffset = Tween<Offset>(
+                    begin: Offset(isForward ? 0.03 : -0.03, 0),
+                    end: Offset.zero,
+                  ).animate(animation);
+
+                  return FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: slideOffset,
+                      child: child,
+                    ),
+                  );
+                },
+                child: KeyedSubtree(
+                  key: ValueKey<int>(currentIndex + (_isWalkerMode ? 100 : 0)),
+                  child: screens[currentIndex],
+                ),
+              ),
+            ),
             if (_isWalkerMode)
               WalkerBottomNav(
                 currentIndex: _walkerIndex,
-                onTap: (index) => setState(() => _walkerIndex = index),
+                onTap: _onWalkerTabTap,
               )
             else
               BottomNav(
                 currentIndex: _ownerIndex,
-                onTap: (index) => setState(() => _ownerIndex = index),
+                onTap: _onOwnerTabTap,
               ),
           ],
         ),

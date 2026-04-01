@@ -1,7 +1,6 @@
 /// Environment configuration for Supabase connectivity.
 ///
-/// Switch between [local] and [production] profiles
-/// by changing the active config in main.dart.
+/// Switch between [Env.local] and [Env.production] as needed.
 class Env {
   final String supabaseUrl;
   final String supabaseAnonKey;
@@ -35,4 +34,7 @@ class Env {
     posthogApiKey: 'YOUR_POSTHOG_API_KEY',
     posthogHost: 'https://us.i.posthog.com',
   );
+
+  /// Active environment — change this to switch targets.
+  static const current = local;
 }
