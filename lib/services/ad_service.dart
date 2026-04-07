@@ -33,6 +33,10 @@ class AdService {
   /// Check RevenueCat for active premium entitlement.
   Future<void> refreshPremiumStatus() async {
     try {
+      if (!await Purchases.isConfigured) {
+        _isPremium = false;
+        return;
+      }
       final customerInfo = await Purchases.getCustomerInfo();
       _isPremium =
           customerInfo.entitlements.all['premium']?.isActive ?? false;

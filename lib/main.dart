@@ -173,16 +173,22 @@ class _AuthGateState extends State<_AuthGate> {
           AnalyticsService.instance.identify(userId);
         }
         RoleService.instance.initialize();
-        Navigator.pushReplacementNamed(context, '/home');
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, '/home');
+          }
+        });
         // Resume GPS broadcast if walker has an active walk
         GpsBroadcastService.instance.resumeIfActiveWalk();
       } else if (event == AuthChangeEvent.signedOut) {
         AnalyticsService.instance.reset();
         RoleService.instance.reset();
         GpsBroadcastService.instance.stopBroadcasting();
-        if (ModalRoute.of(context)?.settings.name != '/') {
-          Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
-        }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && ModalRoute.of(context)?.settings.name != '/') {
+            Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+          }
+        });
       }
     });
   }
