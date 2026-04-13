@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class WalkerEarningsScreen extends StatefulWidget {
   const WalkerEarningsScreen({super.key});
@@ -161,7 +162,7 @@ class _WalkerEarningsScreenState extends State<WalkerEarningsScreen> {
       children: [
         Expanded(
           child: _SummaryCard(
-            icon: Icons.account_balance_wallet,
+            icon: PhosphorIcons.wallet(PhosphorIconsStyle.fill),
             iconColor: AppColors.green600,
             bgColor: AppColors.green50,
             label: 'Total Earnings',
@@ -171,7 +172,7 @@ class _WalkerEarningsScreenState extends State<WalkerEarningsScreen> {
         const SizedBox(width: 12),
         Expanded(
           child: _SummaryCard(
-            icon: Icons.directions_walk,
+            icon: PhosphorIcons.personSimpleWalk(),
             iconColor: AppColors.blue600,
             bgColor: AppColors.blue50,
             label: 'Walks',
@@ -181,7 +182,7 @@ class _WalkerEarningsScreenState extends State<WalkerEarningsScreen> {
         const SizedBox(width: 12),
         Expanded(
           child: _SummaryCard(
-            icon: Icons.star,
+            icon: PhosphorIcons.star(PhosphorIconsStyle.fill),
             iconColor: AppColors.amber500,
             bgColor: AppColors.amber50,
             label: 'Rating',
@@ -230,10 +231,10 @@ class _WalkerEarningsScreenState extends State<WalkerEarningsScreen> {
                     child: Image.network(
                       owner!['avatar_url'],
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Icon(Icons.person, color: AppColors.green600),
+                      errorBuilder: (_, __, ___) => Icon(PhosphorIcons.user(), color: AppColors.green600),
                     ),
                   )
-                : const Icon(Icons.person, color: AppColors.green600),
+                : Icon(PhosphorIcons.user(), color: AppColors.green600),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -292,7 +293,7 @@ class _WalkerEarningsScreenState extends State<WalkerEarningsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.account_balance_wallet, size: 64, color: AppColors.textSecondary.withValues(alpha: 0.5)),
+            Icon(PhosphorIcons.wallet(PhosphorIconsStyle.fill), size: 64, color: AppColors.textSecondary.withValues(alpha: 0.5)),
             const SizedBox(height: 16),
             Text(
               'No Completed Walks Yet',
@@ -321,7 +322,7 @@ class _WalkerEarningsScreenState extends State<WalkerEarningsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, size: 48, color: AppColors.textSecondary),
+            Icon(PhosphorIcons.warningCircle(), size: 48, color: AppColors.textSecondary),
             const SizedBox(height: 16),
             Text(
               _error!,

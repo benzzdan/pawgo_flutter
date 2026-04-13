@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -15,10 +16,10 @@ class BottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = [
-      _NavItem(Icons.home_rounded, 'Home'),
-      _NavItem(Icons.search_rounded, 'Find'),
-      _NavItem(Icons.calendar_today_rounded, 'Bookings'),
-      _NavItem(Icons.pets_rounded, 'My Dogs'),
+      _NavItem(PhosphorIcons.house(), PhosphorIcons.house(PhosphorIconsStyle.fill), 'Home'),
+      _NavItem(PhosphorIcons.magnifyingGlass(), PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.fill), 'Find'),
+      _NavItem(PhosphorIcons.calendarBlank(), PhosphorIcons.calendarBlank(PhosphorIconsStyle.fill), 'Bookings'),
+      _NavItem(PhosphorIcons.pawPrint(), PhosphorIcons.pawPrint(PhosphorIconsStyle.fill), 'My Dogs'),
     ];
 
     return Container(
@@ -50,7 +51,7 @@ class BottomNav extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        item.icon,
+                        isActive ? item.activeIcon : item.icon,
                         size: 26,
                         color: isActive
                             ? AppColors.orange500
@@ -81,6 +82,7 @@ class BottomNav extends StatelessWidget {
 
 class _NavItem {
   final IconData icon;
+  final IconData activeIcon;
   final String label;
-  const _NavItem(this.icon, this.label);
+  const _NavItem(this.icon, this.activeIcon, this.label);
 }

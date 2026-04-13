@@ -3,7 +3,7 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class StatCard extends StatelessWidget {
-  final String icon;
+  final IconData icon;
   final int number;
   final String label;
   final String variant;
@@ -27,6 +27,17 @@ class StatCard extends StatelessWidget {
     }
   }
 
+  Color get _iconColor {
+    switch (variant) {
+      case 'blue':
+        return const Color(0xFF3B82F6);
+      case 'green':
+        return const Color(0xFF10B981);
+      default:
+        return const Color(0xFF6B7280);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -47,7 +58,7 @@ class StatCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Center(
-              child: Text(icon, style: const TextStyle(fontSize: 20)),
+              child: Icon(icon, size: 22, color: _iconColor),
             ),
           ),
           const SizedBox(height: 12),

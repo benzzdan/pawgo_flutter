@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -161,7 +162,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(color: AppColors.border),
                           ),
-                          child: const Icon(Icons.arrow_back,
+                          child: Icon(PhosphorIcons.arrowLeft(),
                               color: AppColors.textPrimary),
                         ),
                       ),
@@ -214,8 +215,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           setState(() => _obscurePassword = !_obscurePassword),
                       child: Icon(
                         _obscurePassword
-                            ? Icons.visibility_off
-                            : Icons.visibility,
+                            ? PhosphorIcons.eyeSlash()
+                            : PhosphorIcons.eye(),
                         color: AppColors.textTertiary,
                       ),
                     ),

@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class ApplicationStatusScreen extends StatefulWidget {
   const ApplicationStatusScreen({super.key});
@@ -158,7 +159,7 @@ class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, size: 48, color: AppColors.red500),
+            Icon(PhosphorIcons.warningCircle(), size: 48, color: AppColors.red500),
             const SizedBox(height: AppSpacing.md),
             Text(
               _error!,
@@ -202,7 +203,7 @@ class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.description_outlined,
+            Icon(PhosphorIcons.fileText(),
                 size: 48, color: AppColors.textTertiary),
             const SizedBox(height: AppSpacing.md),
             Text(
@@ -288,7 +289,7 @@ class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
                         color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.arrow_back,
+                      child: Icon(PhosphorIcons.arrowLeft(),
                           size: 20, color: Colors.white),
                     ),
                   ),
@@ -505,10 +506,10 @@ class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
 
     if (step.isFailed) {
       circleColor = AppColors.red500;
-      circleIcon = Icons.close;
+      circleIcon = PhosphorIcons.x();
     } else if (step.isComplete) {
       circleColor = AppColors.green600;
-      circleIcon = Icons.check;
+      circleIcon = PhosphorIcons.check();
     } else if (step.isActive) {
       circleColor = AppColors.warmCaramel;
       circleIcon = null;
@@ -617,7 +618,7 @@ class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.info_outline, size: 20, color: AppColors.red500),
+              Icon(PhosphorIcons.info(), size: 20, color: AppColors.red500),
               const SizedBox(width: AppSpacing.sm),
               Text(
                 'Application Not Approved',
@@ -691,7 +692,7 @@ class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.verified_user_outlined,
+              Icon(PhosphorIcons.shieldCheck(),
                   size: 20, color: AppColors.blue600),
               const SizedBox(width: AppSpacing.sm),
               Text(
@@ -735,13 +736,13 @@ class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
   IconData _statusIcon() {
     switch (_status) {
       case 'approved':
-        return Icons.check_circle_outline;
+        return PhosphorIcons.checkCircle();
       case 'rejected':
-        return Icons.cancel_outlined;
+        return PhosphorIcons.xCircle();
       case 'background_check_in_progress':
-        return Icons.verified_user_outlined;
+        return PhosphorIcons.shieldCheck();
       default:
-        return Icons.hourglass_top;
+        return PhosphorIcons.hourglass();
     }
   }
 

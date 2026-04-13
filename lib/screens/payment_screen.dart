@@ -7,6 +7,7 @@ import 'package:pawgo/config/env.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({super.key});
@@ -44,17 +45,24 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
-  Future<void> _initRevenueCat() async {
-    try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) {
-        ErrorHandler.instance.navigatorKey.currentState
-            ?.pushNamedAndRemoveUntil('/', (route) => false);
-        return;
-      }
+  bool get _isLocalDev => Env.current.revenueCatApiKey.contains('LOCAL');
 
+  Future<void> _initRevenueCat() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) {
+      ErrorHandler.instance.navigatorKey.currentState
+          ?.pushNamedAndRemoveUntil('/', (route) => false);
+      return;
+    }
+
+    if (_isLocalDev) {
+      setState(() => _initializing = false);
+      return;
+    }
+
+    try {
       await Purchases.configure(
-        PurchasesConfiguration(Env.local.revenueCatApiKey)
+        PurchasesConfiguration(Env.current.revenueCatApiKey)
           ..appUserID = userId,
       );
 
@@ -75,23 +83,24 @@ class _PaymentScreenState extends State<PaymentScreen> {
       _error = null;
     });
 
+    // Skip RevenueCat in local dev — confirm directly via Edge Function
+    if (_isLocalDev) {
+      await _confirmPaymentDirectly();
+      return;
+    }
+
     try {
-      // Fetch available offerings from RevenueCat
       final offerings = await Purchases.getOfferings();
       final currentOffering = offerings.current;
 
       if (currentOffering == null || currentOffering.availablePackages.isEmpty) {
-        // In local dev or if no packages configured, simulate successful payment
-        // by directly calling the confirm-payment edge function
         await _confirmPaymentDirectly();
         return;
       }
 
-      // Purchase the first available package (walk booking product)
       final package = currentOffering.availablePackages.first;
       final purchaseResult = await Purchases.purchasePackage(package);
 
-      // Verify entitlement is active
       if (purchaseResult.entitlements.all.values
           .any((entitlement) => entitlement.isActive)) {
         await _confirmPaymentDirectly();
@@ -103,7 +112,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
       }
     } on PlatformException catch (e) {
       if (e.code == '1' || e.message?.contains('cancel') == true) {
-        // User cancelled
         setState(() {
           _error = null;
           _processing = false;
@@ -119,7 +127,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
         error: e.message ?? 'Unknown error',
       );
     } catch (e) {
-      // For local dev without RevenueCat setup, fall back to direct confirmation
       await _confirmPaymentDirectly();
     }
   }
@@ -130,8 +137,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         'confirm-payment',
         body: {
           'booking_id': _bookingId,
-          'amount': _totalPrice,
-          'currency': 'MXN',
+          'amount_mxn': _totalPrice,
         },
       ));
 
@@ -237,7 +243,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           backgroundColor: AppColors.white,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+            icon: Icon(PhosphorIcons.arrowLeft(), color: AppColors.textPrimary),
             onPressed: () async {
               if (_paymentComplete) {
                 Navigator.pop(context, 'success');
@@ -373,7 +379,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     color: AppColors.white,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.payment,
+                  child: Icon(PhosphorIcons.creditCard(),
                       color: AppColors.green600, size: 24),
                 ),
                 const SizedBox(width: 12),
@@ -391,7 +397,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     ],
                   ),
                 ),
-                const Icon(Icons.check_circle,
+                Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
                     color: AppColors.green600, size: 24),
               ],
             ),
@@ -400,7 +406,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.lock, color: AppColors.textTertiary, size: 14),
+              Icon(PhosphorIcons.lock(), color: AppColors.textTertiary, size: 14),
               const SizedBox(width: 4),
               Text('Secured by RevenueCat',
                   style: GoogleFonts.nunito(
@@ -422,7 +428,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline, color: AppColors.red500, size: 20),
+          Icon(PhosphorIcons.warningCircle(), color: AppColors.red500, size: 20),
           const SizedBox(width: 12),
           Expanded(
             child: Text(_error!,
@@ -502,7 +508,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 shape: BoxShape.circle,
                 border: Border.all(color: AppColors.green200, width: 3),
               ),
-              child: const Icon(Icons.check_circle,
+              child: Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
                   color: AppColors.green600, size: 56),
             ),
             const SizedBox(height: 24),
@@ -518,7 +524,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
             ),
             const SizedBox(height: 32),
             GestureDetector(
-              onTap: () => Navigator.pop(context, 'success'),
+              onTap: () {
+                Navigator.pushNamedAndRemoveUntil(
+                    context, '/home', (route) => false,
+                    arguments: {'tab': 2});
+              },
               child: Container(
                 height: 56,
                 width: double.infinity,

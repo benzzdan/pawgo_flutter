@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/widgets/top_bar.dart';
 import 'package:pawgo/widgets/bottom_nav.dart';
 import 'package:pawgo/widgets/walker_bottom_nav.dart';
@@ -16,16 +18,19 @@ class MainShell extends StatefulWidget {
   const MainShell({super.key});
 
   @override
-  State<MainShell> createState() => _MainShellState();
+  State<MainShell> createState() => MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
+class MainShellState extends State<MainShell> {
   int _ownerIndex = 0;
   int _walkerIndex = 0;
   int _previousOwnerIndex = 0;
   int _previousWalkerIndex = 0;
+  int _unreadChatCount = 0;
 
   final _roleService = RoleService.instance;
+  final _supabase = Supabase.instance.client;
+  Timer? _unreadPollTimer;
 
   final _ownerScreens = const [
     HomeScreen(),
@@ -45,20 +50,108 @@ class _MainShellState extends State<MainShell> {
   void initState() {
     super.initState();
     _roleService.activeRole.addListener(_onRoleChanged);
+    _setupUnreadTracking();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args is Map<String, dynamic>) {
+        final tab = args['tab'] as int?;
+        if (tab != null) {
+          if (_isWalkerMode) {
+            _onWalkerTabTap(tab);
+          } else {
+            _onOwnerTabTap(tab);
+          }
+        }
+      }
+    });
   }
 
   @override
   void dispose() {
     _roleService.activeRole.removeListener(_onRoleChanged);
+    _unreadPollTimer?.cancel();
     super.dispose();
   }
 
   void _onRoleChanged() {
     if (mounted) setState(() {});
+    _setupUnreadTracking();
   }
 
   bool get _isWalkerMode =>
       _roleService.activeRole.value == ActiveRole.walker;
+
+  /// Sets up polling-based unread message tracking for walker mode.
+  /// Uses lightweight REST polling instead of Realtime to avoid
+  /// exhausting Postgres connection slots.
+  void _setupUnreadTracking() {
+    _unreadPollTimer?.cancel();
+
+    if (!_isWalkerMode) {
+      if (mounted) setState(() => _unreadChatCount = 0);
+      return;
+    }
+
+    _fetchUnreadCount();
+
+    // Poll every 15s — lightweight REST query, no Realtime channel needed
+    _unreadPollTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) {
+        if (mounted) _fetchUnreadCount();
+      },
+    );
+  }
+
+  Future<void> _fetchUnreadCount() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    try {
+      // Get walker profile ID
+      final walkerRes = await _supabase
+          .from('walkers')
+          .select('id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      if (walkerRes == null) return;
+      final walkerId = walkerRes['id'] as String;
+
+      // Get booking IDs for active chats
+      final bookings = await _supabase
+          .from('bookings')
+          .select('id')
+          .eq('walker_id', walkerId)
+          .inFilter('status', ['confirmed', 'walk_started']);
+
+      final bookingIds =
+          (bookings as List).map((b) => b['id'] as String).toList();
+
+      if (bookingIds.isEmpty) {
+        if (mounted) setState(() => _unreadChatCount = 0);
+        return;
+      }
+
+      // Count unread messages across all active bookings
+      final unread = await _supabase
+          .from('messages')
+          .select('id')
+          .inFilter('booking_id', bookingIds)
+          .neq('sender_id', userId)
+          .eq('is_read', false);
+
+      if (mounted) {
+        setState(() => _unreadChatCount = unread.length);
+      }
+    } catch (_) {
+      // Non-critical — badge just won't update
+    }
+  }
+
+  /// Switches to the given owner tab index. Callable from descendant widgets
+  /// via `context.findAncestorStateOfType<MainShellState>()`.
+  void switchOwnerTab(int index) => _onOwnerTabTap(index);
 
   void _onOwnerTabTap(int index) {
     if (index == _ownerIndex) return;
@@ -74,6 +167,10 @@ class _MainShellState extends State<MainShell> {
       _previousWalkerIndex = _walkerIndex;
       _walkerIndex = index;
     });
+    // Refresh unread count when switching to chat tab (messages get marked read)
+    if (index == 2) {
+      Future.delayed(const Duration(milliseconds: 500), _fetchUnreadCount);
+    }
   }
 
   @override
@@ -123,6 +220,7 @@ class _MainShellState extends State<MainShell> {
               WalkerBottomNav(
                 currentIndex: _walkerIndex,
                 onTap: _onWalkerTabTap,
+                unreadChatCount: _unreadChatCount,
               )
             else
               BottomNav(

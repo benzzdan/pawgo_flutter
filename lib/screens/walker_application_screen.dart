@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class WalkerApplicationScreen extends StatefulWidget {
   const WalkerApplicationScreen({super.key});
@@ -80,14 +81,14 @@ class _WalkerApplicationScreenState extends State<WalkerApplicationScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: const Icon(Icons.camera_alt,
+                leading: Icon(PhosphorIcons.camera(),
                     color: AppColors.warmCaramel),
                 title: Text('Take Photo',
                     style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
                 onTap: () => Navigator.pop(ctx, ImageSource.camera),
               ),
               ListTile(
-                leading: const Icon(Icons.photo_library,
+                leading: Icon(PhosphorIcons.images(),
                     color: AppColors.warmCaramel),
                 title: Text('Choose from Gallery',
                     style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
@@ -258,7 +259,7 @@ class _WalkerApplicationScreenState extends State<WalkerApplicationScreen> {
                         controller: _nameController,
                         label: 'Full Name',
                         hint: 'Enter your full legal name',
-                        icon: Icons.person,
+                        icon: PhosphorIcons.user(),
                         validator: (v) => (v == null || v.trim().isEmpty)
                             ? 'Full name is required'
                             : null,
@@ -268,7 +269,7 @@ class _WalkerApplicationScreenState extends State<WalkerApplicationScreen> {
                         controller: _phoneController,
                         label: 'Phone Number',
                         hint: '+52 55 1234 5678',
-                        icon: Icons.phone,
+                        icon: PhosphorIcons.phone(),
                         keyboardType: TextInputType.phone,
                         validator: _validatePhone,
                       ),
@@ -303,7 +304,7 @@ class _WalkerApplicationScreenState extends State<WalkerApplicationScreen> {
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.arrow_back,
+              child: Icon(PhosphorIcons.arrowLeft(),
                   size: 20, color: AppColors.textPrimary),
             ),
           ),
@@ -409,10 +410,10 @@ class _WalkerApplicationScreenState extends State<WalkerApplicationScreen> {
                     : null,
               ),
               child: _pickedPhoto == null
-                  ? const Column(
+                  ? Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.camera_alt,
+                        Icon(PhosphorIcons.camera(),
                             size: 32, color: AppColors.warmCaramel),
                         SizedBox(height: 4),
                         Text('Add Photo',

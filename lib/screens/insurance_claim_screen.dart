@@ -4,6 +4,7 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class InsuranceClaimScreen extends StatefulWidget {
   const InsuranceClaimScreen({super.key});
@@ -23,10 +24,10 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
   bool _isSubmitting = false;
   bool _submitted = false;
 
-  static const _claimTypes = [
-    {'value': 'veterinary', 'label': 'Veterinary', 'icon': Icons.local_hospital, 'maxAmount': 5000.0},
-    {'value': 'liability', 'label': 'Liability', 'icon': Icons.shield, 'maxAmount': 4000.0},
-    {'value': 'property', 'label': 'Property', 'icon': Icons.home_repair_service, 'maxAmount': 4000.0},
+  static final _claimTypes = [
+    {'value': 'veterinary', 'label': 'Veterinary', 'icon': PhosphorIcons.firstAid(), 'maxAmount': 5000.0},
+    {'value': 'liability', 'label': 'Liability', 'icon': PhosphorIcons.shield(PhosphorIconsStyle.fill), 'maxAmount': 4000.0},
+    {'value': 'property', 'label': 'Property', 'icon': PhosphorIcons.toolbox(), 'maxAmount': 4000.0},
   ];
 
   double get _maxAmount {
@@ -124,7 +125,7 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
         backgroundColor: AppColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.close, color: AppColors.textPrimary),
+          icon: Icon(PhosphorIcons.x(), color: AppColors.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -154,7 +155,7 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
                 color: AppColors.green50,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(Icons.check_circle, size: 48, color: AppColors.green600),
+              child: Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 48, color: AppColors.green600),
             ),
             const SizedBox(height: AppSpacing.lg),
             Text(
@@ -476,7 +477,7 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
                 ),
               ),
               if (isSelected)
-                const Icon(Icons.check_circle, color: AppColors.orange500, size: 24),
+                Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), color: AppColors.orange500, size: 24),
             ],
           ),
         ),

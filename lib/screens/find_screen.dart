@@ -3,6 +3,7 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/models/mock_data.dart';
 import 'package:pawgo/services/walker_service.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class FindScreen extends StatefulWidget {
   const FindScreen({super.key});
@@ -99,7 +100,7 @@ class _FindScreenState extends State<FindScreen> {
                 child: Row(
                   children: [
                     const SizedBox(width: 16),
-                    const Icon(Icons.location_on,
+                    Icon(PhosphorIcons.mapPin(PhosphorIconsStyle.fill),
                         size: 20, color: AppColors.textSecondary),
                     const SizedBox(width: 8),
                     Expanded(
@@ -144,7 +145,7 @@ class _FindScreenState extends State<FindScreen> {
                       color: AppColors.surface,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.tune,
+                    child: Icon(PhosphorIcons.sliders(),
                         size: 18, color: AppColors.textSecondary),
                   ),
                 ],
@@ -187,7 +188,7 @@ class _FindScreenState extends State<FindScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.wifi_off, size: 48, color: AppColors.gray400),
+              Icon(PhosphorIcons.wifiSlash(), size: 48, color: AppColors.gray400),
               const SizedBox(height: 16),
               Text(
                 _error!,
@@ -231,7 +232,7 @@ class _FindScreenState extends State<FindScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.pets,
+              Icon(PhosphorIcons.pawPrint(),
                   size: 56, color: Colors.grey.withValues(alpha: 0.3)),
               const SizedBox(height: 14),
               Text(
@@ -370,7 +371,7 @@ class _WalkerCard extends StatelessWidget {
                             shape: BoxShape.circle,
                             border: Border.all(color: Colors.white, width: 2),
                           ),
-                          child: const Icon(Icons.shield,
+                          child: Icon(PhosphorIcons.shield(PhosphorIconsStyle.fill),
                               color: Colors.white, size: 12),
                         ),
                       ),
@@ -407,7 +408,7 @@ class _WalkerCard extends StatelessWidget {
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(Icons.shield,
+                                  Icon(PhosphorIcons.shield(PhosphorIconsStyle.fill),
                                       size: 10, color: AppColors.green600),
                                   const SizedBox(width: 4),
                                   Text(
@@ -427,7 +428,7 @@ class _WalkerCard extends StatelessWidget {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          const Icon(Icons.star,
+                          Icon(PhosphorIcons.star(PhosphorIconsStyle.fill),
                               size: 14, color: AppColors.orange500),
                           const SizedBox(width: 4),
                           Text(

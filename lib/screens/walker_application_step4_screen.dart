@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class WalkerApplicationStep4Screen extends StatefulWidget {
   const WalkerApplicationStep4Screen({super.key});
@@ -224,8 +225,8 @@ class _WalkerApplicationStep4ScreenState
                   color: AppColors.green500.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.check_circle_outline,
+                child: Icon(
+                  PhosphorIcons.checkCircle(),
                   size: 56,
                   color: AppColors.green500,
                 ),
@@ -312,7 +313,7 @@ class _WalkerApplicationStep4ScreenState
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.arrow_back,
+              child: Icon(PhosphorIcons.arrowLeft(),
                   size: 20, color: AppColors.textPrimary),
             ),
           ),
@@ -407,7 +408,7 @@ class _WalkerApplicationStep4ScreenState
                       color: AppColors.surface,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Icon(Icons.person,
+                    child: Icon(PhosphorIcons.user(),
                         size: 40, color: AppColors.textTertiary),
                   ),
                 ),
