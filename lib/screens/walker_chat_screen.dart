@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -412,7 +413,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
         body: {
           'booking_id': _bookingId,
           'file_name': fileName,
-          'file_data': bytes.toList(),
+          'file_data': base64Encode(bytes),
           'content_type': mimeType,
         },
       );
@@ -431,11 +432,23 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
               ?.pushNamedAndRemoveUntil('/', (route) => false);
           return;
         }
-        ErrorHandler.instance.showRecoverableError(context, 'Failed to upload media');
+        _showUploadRetrySnackBar(source);
       }
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
+  }
+
+  void _showUploadRetrySnackBar(ImageSource source) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Failed to upload media'),
+        action: SnackBarAction(
+          label: 'Retry',
+          onPressed: () => _handleMediaUpload(source: source),
+        ),
+      ),
+    );
   }
 
   String _getMimeType(String fileName) {
@@ -1119,7 +1132,7 @@ class _MessageBubble extends StatelessWidget {
             crossAxisAlignment:
                 isCurrentUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
-              if (_hasMedia) _buildMediaContent(),
+              if (_hasMedia) _buildTappableMedia(context),
               if (message['content'] != null &&
                   message['content'].toString().isNotEmpty)
                 Container(
@@ -1191,6 +1204,25 @@ class _MessageBubble extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildTappableMedia(BuildContext context) {
+    final mediaUrl = message['media_url']?.toString();
+    final isVideo = message['media_type'] == 'video';
+
+    if (mediaUrl == null || isVideo) return _buildMediaContent();
+
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => FullScreenPhotoViewer(imageUrl: mediaUrl),
+          ),
+        );
+      },
+      child: _buildMediaContent(),
     );
   }
 
@@ -1340,6 +1372,44 @@ class _DateSeparator extends StatelessWidget {
           ),
           Expanded(
             child: Container(height: 1, color: AppColors.textTertiary.withValues(alpha: 0.3)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class FullScreenPhotoViewer extends StatelessWidget {
+  final String imageUrl;
+
+  const FullScreenPhotoViewer({super.key, required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          Center(
+            child: InteractiveViewer(
+              child: Image.network(
+                imageUrl,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => Icon(
+                  PhosphorIcons.imageBroken(),
+                  size: 64,
+                  color: Colors.white54,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            right: 16,
+            child: IconButton(
+              icon: Icon(PhosphorIcons.x(), color: Colors.white, size: 28),
+              onPressed: () => Navigator.pop(context),
+            ),
           ),
         ],
       ),
