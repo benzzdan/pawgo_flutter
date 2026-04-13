@@ -35,6 +35,7 @@ import 'package:pawgo/services/role_service.dart';
 import 'package:pawgo/services/theme_service.dart';
 import 'package:pawgo/services/auth_service.dart';
 import 'package:pawgo/services/notification_service.dart';
+import 'package:pawgo/screens/bookings_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -96,6 +97,23 @@ Future<void> main() async {
   runApp(const PawgoApp());
 }
 
+/// Handles notification tap deep-linking via the global navigator key.
+void _handleNotificationTap(NotificationNavigation nav) {
+  final navigator = ErrorHandler.instance.navigatorKey.currentState;
+  if (navigator == null) return;
+
+  // Set pending tab for bookings-related routes
+  if (nav.tab != null) {
+    BookingsScreen.pendingInitialTab = nav.tab;
+  }
+
+  navigator.pushNamedAndRemoveUntil(
+    nav.route,
+    (route) => route.settings.name == '/home' || route.isFirst,
+    arguments: nav.arguments,
+  );
+}
+
 class PawgoApp extends StatelessWidget {
   const PawgoApp({super.key});
 
@@ -103,6 +121,9 @@ class PawgoApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final session = Supabase.instance.client.auth.currentSession;
     final initialRoute = session != null ? '/home' : '/';
+
+    // Wire notification deep-link navigation using the global navigator key
+    NotificationService.instance.onNotificationTap = _handleNotificationTap;
 
     // Initialize role detection and resume GPS broadcast on app restart
     if (session != null) {

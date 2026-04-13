@@ -9,17 +9,34 @@ class MockFirebaseMessagingWrapper extends Mock
 
 class MockSupabaseAuthWrapper extends Mock implements SupabaseAuthWrapper {}
 
+class MockLocalNotificationsWrapper extends Mock
+    implements LocalNotificationsWrapper {}
+
 void main() {
   late NotificationService service;
   late MockFirebaseMessagingWrapper mockMessaging;
   late MockSupabaseAuthWrapper mockAuth;
+  late MockLocalNotificationsWrapper mockLocalNotifications;
 
   setUp(() {
     mockMessaging = MockFirebaseMessagingWrapper();
     mockAuth = MockSupabaseAuthWrapper();
+    mockLocalNotifications = MockLocalNotificationsWrapper();
+
+    // Default stubs for message handling (not under test here)
+    when(() => mockMessaging.onMessage)
+        .thenAnswer((_) => const Stream<NotificationData>.empty());
+    when(() => mockMessaging.onMessageOpenedApp)
+        .thenAnswer((_) => const Stream<NotificationData>.empty());
+    when(() => mockMessaging.getInitialMessage())
+        .thenAnswer((_) async => null);
+    when(() => mockLocalNotifications.initialize())
+        .thenAnswer((_) async {});
+
     service = NotificationService.forTesting(
       messaging: mockMessaging,
       auth: mockAuth,
+      localNotifications: mockLocalNotifications,
     );
   });
 
