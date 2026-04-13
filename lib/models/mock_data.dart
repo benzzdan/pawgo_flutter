@@ -197,6 +197,7 @@ class Booking {
   /// Whether the booking is in the future / active.
   bool get isUpcoming =>
       status == 'pending' ||
+      status == 'pending_walker_acceptance' ||
       status == 'confirmed' ||
       status == 'walker_en_route' ||
       status == 'walk_started';
@@ -212,6 +213,8 @@ class Booking {
     switch (status) {
       case 'pending':
         return 'Pending';
+      case 'pending_walker_acceptance':
+        return 'Awaiting Walker';
       case 'confirmed':
         return 'Confirmed';
       case 'walker_en_route':
