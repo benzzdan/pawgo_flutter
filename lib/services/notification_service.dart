@@ -11,27 +11,55 @@ class NotificationData {
   final String? body;
   final String? type;
   final String? bookingId;
+  final List<String>? suggestedWalkerIds;
 
-  const NotificationData({this.title, this.body, this.type, this.bookingId});
+  const NotificationData({
+    this.title,
+    this.body,
+    this.type,
+    this.bookingId,
+    this.suggestedWalkerIds,
+  });
 
   factory NotificationData.fromRemoteMessage(RemoteMessage message) {
+    List<String>? walkerIds;
+    final rawIds = message.data['suggested_walker_ids'];
+    if (rawIds is String && rawIds.isNotEmpty) {
+      walkerIds = rawIds.split(',');
+    } else if (rawIds is List) {
+      walkerIds = rawIds.cast<String>();
+    }
+
     return NotificationData(
       title: message.notification?.title,
       body: message.notification?.body,
       type: message.data['type'] as String?,
       bookingId: message.data['booking_id'] as String?,
+      suggestedWalkerIds: walkerIds,
     );
   }
 
-  /// Encode type and bookingId as a JSON string for local notification payload.
-  String toPayload() => jsonEncode({'type': type, 'booking_id': bookingId});
+  /// Encode type, bookingId, and suggestedWalkerIds as a JSON string for
+  /// local notification payload.
+  String toPayload() => jsonEncode({
+        'type': type,
+        'booking_id': bookingId,
+        if (suggestedWalkerIds != null)
+          'suggested_walker_ids': suggestedWalkerIds,
+      });
 
   /// Decode a local notification payload back into [NotificationData].
   factory NotificationData.fromPayload(String payload) {
     final map = jsonDecode(payload) as Map<String, dynamic>;
+    final rawIds = map['suggested_walker_ids'];
+    List<String>? walkerIds;
+    if (rawIds is List) {
+      walkerIds = rawIds.cast<String>();
+    }
     return NotificationData(
       type: map['type'] as String?,
       bookingId: map['booking_id'] as String?,
+      suggestedWalkerIds: walkerIds,
     );
   }
 }
@@ -54,6 +82,7 @@ class NotificationRouter {
   static NotificationNavigation? routeFor({
     required String? type,
     String? bookingId,
+    List<String>? suggestedWalkerIds,
   }) {
     switch (type) {
       case 'booking_confirmed':
@@ -76,6 +105,20 @@ class NotificationRouter {
           route: '/walk-request',
           arguments: bookingId != null ? {'booking_id': bookingId} : null,
         );
+      case 'walk_request_accepted':
+        return const NotificationNavigation(route: '/home', tab: 'upcoming');
+      case 'walk_request_declined':
+      case 'walk_request_expired':
+        if (suggestedWalkerIds != null && suggestedWalkerIds.isNotEmpty) {
+          return NotificationNavigation(
+            route: '/alternative-walkers',
+            arguments: {
+              'booking_id': bookingId,
+              'suggested_walker_ids': suggestedWalkerIds,
+            },
+          );
+        }
+        return const NotificationNavigation(route: '/home', tab: 'cancelled');
       default:
         return null;
     }
@@ -318,6 +361,7 @@ class NotificationService {
     final nav = NotificationRouter.routeFor(
       type: data.type,
       bookingId: data.bookingId,
+      suggestedWalkerIds: data.suggestedWalkerIds,
     );
     if (nav != null) {
       _onNotificationTap?.call(nav);

@@ -157,6 +157,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
           final status = b['status'] as String;
           return [
             'pending',
+            'pending_walker_acceptance',
             'confirmed',
             'walker_en_route',
             'walk_started'
@@ -467,6 +468,61 @@ class _BookingsScreenState extends State<BookingsScreen> {
     }
   }
 
+  Future<void> _cancelPendingBooking(BuildContext sheetContext, String bookingId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Cancel Request?',
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+        content: Text(
+            'Are you sure you want to cancel this walk request?',
+            style: GoogleFonts.nunito()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Keep',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Cancel Request',
+                style: GoogleFonts.nunito(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.red500)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await withRetry(() => _supabase
+          .from('bookings')
+          .update({'status': 'cancelled'})
+          .eq('id', bookingId));
+
+      if (!mounted) return;
+      Navigator.pop(sheetContext); // Close the detail sheet
+      _fetchBookings(); // Refresh the list
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Walk request cancelled',
+              style: GoogleFonts.nunito(fontWeight: FontWeight.w600)),
+          backgroundColor: AppColors.red500,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ErrorHandler.instance.handleError(
+        context,
+        e,
+        screen: 'bookings',
+        fallbackMessage: 'Failed to cancel booking. Please try again.',
+      );
+    }
+  }
+
   void _showBookingDetail(Map<String, dynamic> booking) {
     final walkerData = booking['walkers'] as Map<String, dynamic>?;
     final walkerUser = walkerData?['users'] as Map<String, dynamic>?;
@@ -523,6 +579,13 @@ class _BookingsScreenState extends State<BookingsScreen> {
               const SizedBox(height: 20),
               // Status badge
               _StatusBadge(status: status),
+              // Countdown timer for pending_walker_acceptance
+              if (status == 'pending_walker_acceptance') ...[
+                const SizedBox(height: 12),
+                _CountdownBanner(
+                  acceptanceDeadline: booking['acceptance_deadline'] as String?,
+                ),
+              ],
               const SizedBox(height: 16),
               // Walker
               Text('Walker',
@@ -746,6 +809,28 @@ class _BookingsScreenState extends State<BookingsScreen> {
                   ],
                 ),
               ],
+              // Cancel button for pending_walker_acceptance bookings
+              if (status == 'pending_walker_acceptance') ...[
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _cancelPendingBooking(ctx, booking['id']),
+                    icon: Icon(PhosphorIcons.xCircle(), size: 18),
+                    label: Text('Cancel Request',
+                        style: GoogleFonts.nunito(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.red500,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               // Insurance claim button for completed or disputed walks
               if (status == 'walk_completed' || status == 'disputed') ...[
                 const SizedBox(height: 10),
@@ -868,20 +953,102 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final config = _statusConfig(status);
-    return Container(
+    final reduceMotion = MediaQuery.of(context).accessibleNavigation;
+    final isPending = status == 'pending_walker_acceptance';
+
+    Widget badge = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: config.bgColor,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(
-        config.label,
-        style: GoogleFonts.nunito(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: config.textColor,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isPending) ...[
+            _PulsingDot(color: config.textColor, animate: !reduceMotion),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            config.label,
+            style: GoogleFonts.nunito(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: config.textColor,
+            ),
+          ),
+        ],
       ),
+    );
+
+    return badge;
+  }
+}
+
+/// Small pulsing dot indicator for pending_walker_acceptance status.
+class _PulsingDot extends StatefulWidget {
+  final Color color;
+  final bool animate;
+
+  const _PulsingDot({required this.color, this.animate = true});
+
+  @override
+  State<_PulsingDot> createState() => _PulsingDotState();
+}
+
+class _PulsingDotState extends State<_PulsingDot>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+    _animation = Tween<double>(begin: 0.4, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+    if (widget.animate) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.animate) {
+      return Container(
+        width: 8,
+        height: 8,
+        decoration: BoxDecoration(
+          color: widget.color,
+          shape: BoxShape.circle,
+        ),
+      );
+    }
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Opacity(
+          opacity: _animation.value,
+          child: Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: widget.color,
+              shape: BoxShape.circle,
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -897,6 +1064,9 @@ _StatusConfig _statusConfig(String status) {
   switch (status) {
     case 'pending':
       return _StatusConfig('Pending', AppColors.amber50, AppColors.yellow800);
+    case 'pending_walker_acceptance':
+      return _StatusConfig(
+          'Awaiting Walker', AppColors.amber50, AppColors.amber500);
     case 'confirmed':
       return _StatusConfig('Confirmed', AppColors.green50, AppColors.green600);
     case 'walker_en_route':
@@ -1055,6 +1225,110 @@ class _BookingCard extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Countdown banner shown in the booking detail sheet for pending_walker_acceptance.
+class _CountdownBanner extends StatefulWidget {
+  final String? acceptanceDeadline;
+  const _CountdownBanner({required this.acceptanceDeadline});
+
+  @override
+  State<_CountdownBanner> createState() => _CountdownBannerState();
+}
+
+class _CountdownBannerState extends State<_CountdownBanner> {
+  Timer? _timer;
+  Duration _remaining = Duration.zero;
+  bool _expired = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startCountdown();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _startCountdown() {
+    if (widget.acceptanceDeadline == null) return;
+    final deadline = DateTime.tryParse(widget.acceptanceDeadline!);
+    if (deadline == null) return;
+
+    _updateRemaining(deadline);
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      _updateRemaining(deadline);
+    });
+  }
+
+  void _updateRemaining(DateTime deadline) {
+    final now = DateTime.now().toUtc();
+    final remaining = deadline.difference(now);
+    if (!mounted) return;
+    if (remaining.isNegative) {
+      _timer?.cancel();
+      setState(() {
+        _expired = true;
+        _remaining = Duration.zero;
+      });
+    } else {
+      setState(() {
+        _remaining = remaining;
+        _expired = false;
+      });
+    }
+  }
+
+  String _formatCountdown(Duration d) {
+    if (d.isNegative || d == Duration.zero) return '0:00';
+    final minutes = d.inMinutes;
+    final seconds = d.inSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.acceptanceDeadline == null) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: _expired ? AppColors.red50 : AppColors.amber50,
+        borderRadius: BorderRadius.circular(AppRadius.button),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            _expired
+                ? PhosphorIcons.warningCircle()
+                : PhosphorIcons.hourglass(),
+            size: 18,
+            color: _expired ? AppColors.red500 : AppColors.amber500,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              _expired
+                  ? 'Request expired'
+                  : 'Waiting for walker — ${_formatCountdown(_remaining)} remaining',
+              style: GoogleFonts.nunito(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: _expired ? AppColors.red500 : AppColors.yellow800,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
