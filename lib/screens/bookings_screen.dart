@@ -12,6 +12,10 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 class BookingsScreen extends StatefulWidget {
   const BookingsScreen({super.key, this.bookingStatusService});
 
+  /// Set before navigating to bookings to open with a specific tab selected.
+  /// BookingsScreen reads and clears this in initState.
+  static String? pendingInitialTab;
+
   /// Optional injected service for testing.
   final BookingStatusService? bookingStatusService;
 
@@ -37,6 +41,11 @@ class _BookingsScreenState extends State<BookingsScreen> {
   @override
   void initState() {
     super.initState();
+    final pending = BookingsScreen.pendingInitialTab;
+    if (pending != null) {
+      _selectedTab = pending;
+      BookingsScreen.pendingInitialTab = null;
+    }
     _statusService = widget.bookingStatusService ?? BookingStatusService();
     _fetchBookings();
     _subscribeToUpdates();

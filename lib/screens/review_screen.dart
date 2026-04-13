@@ -5,6 +5,7 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/ad_service.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:pawgo/screens/bookings_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -61,6 +62,16 @@ class _ReviewScreenState extends State<ReviewScreen> {
     super.dispose();
   }
 
+  void _navigateToBookingsPast() {
+    BookingsScreen.pendingInitialTab = 'past';
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      '/home',
+      (route) => false,
+      arguments: {'tab': 2},
+    );
+  }
+
   Future<void> _submitReview() async {
     if (_rating == 0) {
       ErrorHandler.instance.showRecoverableError(context, 'Please select a rating');
@@ -106,17 +117,17 @@ class _ReviewScreenState extends State<ReviewScreen> {
             onAdDismissedFullScreenContent: (ad) {
               ad.dispose();
               AnalyticsService.instance.adDismissed(adType: 'interstitial');
-              if (mounted) Navigator.pop(context);
+              if (mounted) _navigateToBookingsPast();
             },
             onAdFailedToShowFullScreenContent: (ad, _) {
               ad.dispose();
-              if (mounted) Navigator.pop(context);
+              if (mounted) _navigateToBookingsPast();
             },
           );
           _interstitialAd!.show();
           _interstitialAd = null;
         } else {
-          Navigator.pop(context);
+          _navigateToBookingsPast();
         }
       });
     } catch (e) {
@@ -144,7 +155,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
         elevation: 0,
         leading: IconButton(
           icon: Icon(PhosphorIcons.x(), color: AppColors.textPrimary),
-          onPressed: () => Navigator.pop(context),
+          onPressed: _navigateToBookingsPast,
         ),
         title: Text(
           'Rate Your Walk',
@@ -358,7 +369,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
           const SizedBox(height: 16),
           // Skip button
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: _navigateToBookingsPast,
             child: Text(
               'Skip for now',
               style: GoogleFonts.nunito(

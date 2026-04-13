@@ -173,24 +173,14 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     // Subscribe to live updates via TrackingService
     _trackingService.subscribe(bookingId);
 
-    // Subscribe to booking status changes
+    // Subscribe to booking status changes (updates UI state only).
+    // Navigation to /review on walk_completed is handled by the direct
+    // Realtime channel in _subscribeToBookingStatus() — do NOT also
+    // navigate here, or the review screen will be prematurely destroyed.
     _bookingStatusSub =
         _bookingStatusService.statusStream.listen((update) {
       if (mounted) {
         setState(() => _bookingStatus = update.newStatus);
-        if (update.newStatus == 'walk_completed' && !_isWalker) {
-          // Owner: redirect to bookings after walk ends
-          Future.delayed(const Duration(seconds: 2), () {
-            if (mounted) {
-              Navigator.pushNamedAndRemoveUntil(
-                  context, '/home', (route) => false,
-                  arguments: {'tab': 2});
-            }
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Walk completed!')),
-          );
-        }
       }
     });
     _bookingStatusService.subscribeToBooking(bookingId);
