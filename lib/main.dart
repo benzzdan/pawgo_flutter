@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/config/env.dart';
+import 'package:pawgo/config/firebase_options.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/screens/sign_in_screen.dart';
 import 'package:pawgo/screens/sign_up_screen.dart';
@@ -35,6 +37,10 @@ import 'package:pawgo/services/auth_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
   const env = Env.local; // Switch to Env.production for release builds
   await Supabase.initialize(
