@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class WalkerApplicationStep3Screen extends StatefulWidget {
   const WalkerApplicationStep3Screen({super.key});
@@ -89,14 +90,14 @@ class _WalkerApplicationStep3ScreenState
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: const Icon(Icons.camera_alt,
+                leading: Icon(PhosphorIcons.camera(),
                     color: AppColors.warmCaramel),
                 title: Text('Take Photo',
                     style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
                 onTap: () => Navigator.pop(ctx, ImageSource.camera),
               ),
               ListTile(
-                leading: const Icon(Icons.photo_library,
+                leading: Icon(PhosphorIcons.images(),
                     color: AppColors.warmCaramel),
                 title: Text('Choose from Gallery',
                     style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
@@ -285,7 +286,7 @@ class _WalkerApplicationStep3ScreenState
                           controller: _emergencyNameController,
                           label: 'Emergency Contact Name',
                           hint: 'Full name of your emergency contact',
-                          icon: Icons.person_outline,
+                          icon: PhosphorIcons.user(),
                           validator: (v) => (v == null || v.trim().isEmpty)
                               ? 'Emergency contact name is required'
                               : null,
@@ -295,7 +296,7 @@ class _WalkerApplicationStep3ScreenState
                           controller: _emergencyPhoneController,
                           label: 'Emergency Contact Phone',
                           hint: '+52 55 1234 5678',
-                          icon: Icons.phone_outlined,
+                          icon: PhosphorIcons.phone(),
                           keyboardType: TextInputType.phone,
                           validator: _validatePhone,
                         ),
@@ -330,7 +331,7 @@ class _WalkerApplicationStep3ScreenState
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.arrow_back,
+              child: Icon(PhosphorIcons.arrowLeft(),
                   size: 20, color: AppColors.textPrimary),
             ),
           ),
@@ -511,7 +512,7 @@ class _WalkerApplicationStep3ScreenState
                         color: AppColors.warmCaramel,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.check,
+                      child: Icon(PhosphorIcons.check(),
                           size: 16, color: AppColors.white),
                     ),
                   ),
@@ -520,7 +521,7 @@ class _WalkerApplicationStep3ScreenState
             : Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.badge_outlined,
+                  Icon(PhosphorIcons.identificationCard(),
                       size: 32, color: AppColors.warmCaramel),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
@@ -633,7 +634,7 @@ class _WalkerApplicationStep3ScreenState
         children: [
           Row(
             children: [
-              const Icon(Icons.verified_user,
+              Icon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill),
                   size: 20, color: AppColors.warmCaramel),
               const SizedBox(width: AppSpacing.sm),
               Expanded(
@@ -715,7 +716,7 @@ class _WalkerApplicationStep3ScreenState
       padding: const EdgeInsets.only(bottom: AppSpacing.xs),
       child: Row(
         children: [
-          const Icon(Icons.check_circle_outline,
+          Icon(PhosphorIcons.checkCircle(),
               size: 16, color: AppColors.warmCaramel),
           const SizedBox(width: AppSpacing.sm),
           Expanded(

@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:pawgo/models/mock_data.dart';
 import 'package:pawgo/services/earnings_service.dart';
 import 'package:pawgo/theme/app_theme.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class EarningsScreen extends StatefulWidget {
   const EarningsScreen({super.key});
@@ -78,7 +79,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.arrow_back,
+              child: Icon(PhosphorIcons.arrowLeft(),
                   size: 20, color: AppColors.textPrimary),
             ),
           ),
@@ -108,7 +109,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.error_outline,
+              Icon(PhosphorIcons.warningCircle(),
                   size: 48, color: AppColors.textTertiary),
               const SizedBox(height: 16),
               Text(
@@ -136,7 +137,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.account_balance_wallet_outlined,
+            Icon(PhosphorIcons.wallet(),
                 size: 48, color: AppColors.textTertiary),
             const SizedBox(height: 16),
             Text(
@@ -400,15 +401,15 @@ class _PaymentCard extends StatelessWidget {
   IconData get _statusIcon {
     switch (payment.status) {
       case 'completed':
-        return Icons.check_circle;
+        return PhosphorIcons.checkCircle(PhosphorIconsStyle.fill);
       case 'pending':
-        return Icons.schedule;
+        return PhosphorIcons.clock();
       case 'failed':
-        return Icons.error;
+        return PhosphorIcons.warningCircle(PhosphorIconsStyle.fill);
       case 'refunded':
-        return Icons.undo;
+        return PhosphorIcons.arrowCounterClockwise();
       default:
-        return Icons.payment;
+        return PhosphorIcons.creditCard();
     }
   }
 

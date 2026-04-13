@@ -34,7 +34,7 @@ class CelebrationOverlay extends StatefulWidget {
   /// Subtitle text shown below the title.
   final String subtitle;
 
-  /// Path to an SVG illustration asset. If null, no illustration is shown.
+  /// Path to an illustration asset (SVG or raster image). If null, no illustration is shown.
   final String? illustrationAsset;
 
   /// Colors for confetti particles. Defaults to brand palette.
@@ -175,15 +175,18 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
                     if (widget.illustrationAsset != null)
                       _buildIllustration(reduceMotion),
 
-                    const SizedBox(height: 24),
-
-                    // Title.
-                    _buildTitle(reduceMotion),
-
-                    const SizedBox(height: 12),
-
-                    // Subtitle.
-                    _buildSubtitle(reduceMotion),
+                    // Pull title up into illustration whitespace.
+                    Transform.translate(
+                      offset: const Offset(0, -20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildTitle(reduceMotion),
+                          const SizedBox(height: 4),
+                          _buildSubtitle(reduceMotion),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -195,11 +198,11 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
   }
 
   Widget _buildIllustration(bool reduceMotion) {
-    final illustration = SvgPicture.asset(
-      widget.illustrationAsset!,
-      width: 140,
-      height: 140,
-    );
+    final assetPath = widget.illustrationAsset!;
+    final isSvg = assetPath.endsWith('.svg');
+    final Widget illustration = isSvg
+        ? SvgPicture.asset(assetPath, width: 140, height: 140)
+        : Image.asset(assetPath, width: 180, height: 180, fit: BoxFit.contain);
 
     if (reduceMotion) return illustration;
 

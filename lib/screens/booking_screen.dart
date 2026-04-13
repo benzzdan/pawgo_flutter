@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class BookingScreen extends StatefulWidget {
   const BookingScreen({super.key});
@@ -223,7 +224,7 @@ class _BookingScreenState extends State<BookingScreen> {
         backgroundColor: AppColors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+          icon: Icon(PhosphorIcons.arrowLeft(), color: AppColors.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text('Book a Walk',
@@ -300,7 +301,7 @@ class _BookingScreenState extends State<BookingScreen> {
                 Row(
                   children: [
                     if (rating != null) ...[
-                      const Icon(Icons.star, color: AppColors.amber500, size: 16),
+                      Icon(PhosphorIcons.star(PhosphorIconsStyle.fill), color: AppColors.amber500, size: 16),
                       const SizedBox(width: 4),
                       Text(rating.toStringAsFixed(1),
                           style: GoogleFonts.nunito(
@@ -379,7 +380,7 @@ class _BookingScreenState extends State<BookingScreen> {
                           color: AppColors.orange50,
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(Icons.pets,
+                        child: Icon(PhosphorIcons.pawPrint(),
                             color: AppColors.orange500, size: 24),
                       ),
                       const SizedBox(width: 12),
@@ -400,7 +401,7 @@ class _BookingScreenState extends State<BookingScreen> {
                         ),
                       ),
                       if (isSelected)
-                        const Icon(Icons.check_circle,
+                        Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
                             color: AppColors.green600, size: 24),
                     ],
                   ),
@@ -435,7 +436,7 @@ class _BookingScreenState extends State<BookingScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.calendar_today,
+                      Icon(PhosphorIcons.calendarBlank(),
                           color: AppColors.blue500, size: 20),
                       const SizedBox(width: 10),
                       Text(
@@ -462,7 +463,7 @@ class _BookingScreenState extends State<BookingScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.access_time,
+                      Icon(PhosphorIcons.clock(),
                           color: AppColors.purple500, size: 20),
                       const SizedBox(width: 10),
                       Text(

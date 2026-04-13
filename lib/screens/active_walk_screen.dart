@@ -11,6 +11,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/analytics_service.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class ActiveWalkScreen extends StatefulWidget {
   const ActiveWalkScreen({
@@ -59,6 +60,10 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
 
   // End walk state
   bool _endingWalk = false;
+
+  // Unread chat message count
+  int _unreadChatCount = 0;
+  RealtimeChannel? _chatChannel;
 
   // GPS broadcast pulse animation
   late final AnimationController _pulseController;
@@ -120,6 +125,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
       _loadExistingLocations();
       _subscribeToLocations();
       _initTrackingService(_bookingId!);
+      _subscribeToChatMessages();
     } else {
       setState(() {
         _isLoading = false;
@@ -172,7 +178,15 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
         _bookingStatusService.statusStream.listen((update) {
       if (mounted) {
         setState(() => _bookingStatus = update.newStatus);
-        if (update.newStatus == 'walk_completed') {
+        if (update.newStatus == 'walk_completed' && !_isWalker) {
+          // Owner: redirect to bookings after walk ends
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              Navigator.pushNamedAndRemoveUntil(
+                  context, '/home', (route) => false,
+                  arguments: {'tab': 2});
+            }
+          });
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Walk completed!')),
           );
@@ -182,6 +196,31 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     _bookingStatusService.subscribeToBooking(bookingId);
   }
 
+  void _subscribeToChatMessages() {
+    if (_bookingId == null) return;
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+
+    _chatChannel = Supabase.instance.client
+        .channel('active_walk_chat:$_bookingId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'messages',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'booking_id',
+            value: _bookingId!,
+          ),
+          callback: (payload) {
+            final senderId = payload.newRecord['sender_id']?.toString();
+            if (senderId != currentUserId && mounted) {
+              setState(() => _unreadChatCount++);
+            }
+          },
+        )
+        .subscribe();
+  }
+
   @override
   void dispose() {
     _pulseController.dispose();
@@ -189,6 +228,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     _gpsTimeoutTimer?.cancel();
     _locationChannel?.unsubscribe();
     _bookingChannel?.unsubscribe();
+    _chatChannel?.unsubscribe();
     _mapController?.dispose();
     _locationSub?.cancel();
     _connectionSub?.cancel();
@@ -534,7 +574,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
       color: const Color(0xFFFEF3C7),
       child: Row(
         children: [
-          const Icon(Icons.wifi_off, size: 18, color: Color(0xFF92400E)),
+          Icon(PhosphorIcons.wifiSlash(), size: 18, color: Color(0xFF92400E)),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -584,7 +624,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.location_off, size: 64, color: AppColors.textTertiary),
+            Icon(PhosphorIcons.mapPinLine(), size: 64, color: AppColors.textTertiary),
             const SizedBox(height: 16),
             Text(
               _error ?? 'Something went wrong',
@@ -796,8 +836,8 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
             // Walker GPS Broadcasting indicator
             if (_isWalker)
               Positioned(
-                top: 12,
-                right: 12,
+                bottom: 12,
+                left: 12,
                 child: ValueListenableBuilder<bool>(
                   valueListenable: _gpsBroadcast.broadcastingNotifier,
                   builder: (context, isBroadcasting, _) {
@@ -887,7 +927,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.signal_wifi_off, size: 16, color: AppColors.amber500),
+                      Icon(PhosphorIcons.wifiSlash(), size: 16, color: AppColors.amber500),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -922,7 +962,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.my_location,
+                  child: Icon(PhosphorIcons.crosshairSimple(),
                       size: 16, color: AppColors.orange500),
                 ),
               ),
@@ -995,26 +1035,63 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                 color: AppColors.green50,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.phone, size: 18, color: AppColors.green600),
+              child: Icon(PhosphorIcons.phone(), size: 18, color: AppColors.green600),
             ),
             const SizedBox(width: 8),
             GestureDetector(
-              onTap: () => Navigator.pushNamed(context, '/chat',
-                  arguments: _bookingId != null
-                      ? {
-                          'booking_id': _bookingId,
-                          'other_party_name': _isWalker ? _ownerName : _walkerName,
-                        }
-                      : null),
-              child: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: AppColors.blue50,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.chat_bubble,
-                    size: 18, color: AppColors.blue600),
+              onTap: () {
+                setState(() => _unreadChatCount = 0);
+                Navigator.pushNamed(context, '/chat',
+                    arguments: _bookingId != null
+                        ? {
+                            'booking_id': _bookingId,
+                            'other_party_name': _isWalker ? _ownerName : _walkerName,
+                          }
+                        : null);
+              },
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppColors.blue50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(PhosphorIcons.chatCircle(PhosphorIconsStyle.fill),
+                        size: 18, color: AppColors.blue600),
+                  ),
+                  if (_unreadChatCount > 0)
+                    Positioned(
+                      top: -6,
+                      right: -6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppColors.red500,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.white, width: 1.5),
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 18,
+                          minHeight: 18,
+                        ),
+                        child: Center(
+                          child: Text(
+                            _unreadChatCount > 9 ? '9+' : '$_unreadChatCount',
+                            style: GoogleFonts.nunito(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              height: 1.2,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ],
@@ -1034,7 +1111,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
       child: Row(
         children: [
           _WalkStat(
-            icon: Icons.access_time,
+            icon: PhosphorIcons.clock(),
             iconColor: AppColors.blue500,
             bgGradient: const [AppColors.blue50, Color(0x80DBEAFE)],
             value: '$_elapsedMinutes',
@@ -1042,7 +1119,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
           ),
           const SizedBox(width: 12),
           _WalkStat(
-            icon: Icons.trending_up,
+            icon: PhosphorIcons.trendUp(),
             iconColor: AppColors.orange500,
             bgGradient: const [AppColors.orange50, Color(0x80FFEDD5)],
             value: distanceStr,
@@ -1050,7 +1127,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
           ),
           const SizedBox(width: 12),
           _WalkStat(
-            icon: Icons.location_on,
+            icon: PhosphorIcons.mapPin(PhosphorIconsStyle.fill),
             iconColor: AppColors.purple500,
             bgGradient: const [AppColors.purple50, Color(0x80F3E8FF)],
             value: '${_routePoints.length}',
@@ -1090,7 +1167,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
               : Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.stop_circle, size: 20),
+                    Icon(PhosphorIcons.stopCircle(PhosphorIconsStyle.fill), size: 20),
                     const SizedBox(width: 8),
                     Text(
                       'End Walk',
@@ -1177,7 +1254,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
       return Column(
         children: [
           const SizedBox(height: 24),
-          Icon(Icons.location_searching,
+          Icon(PhosphorIcons.crosshair(),
               size: 48, color: AppColors.textTertiary.withValues(alpha: 0.5)),
           const SizedBox(height: 12),
           Text(
@@ -1313,7 +1390,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
         Center(
           child: Column(
             children: [
-              Icon(Icons.photo_camera_outlined,
+              Icon(PhosphorIcons.camera(),
                   size: 48, color: AppColors.textTertiary.withValues(alpha: 0.5)),
               const SizedBox(height: 8),
               Text(
@@ -1388,7 +1465,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.location_on,
+                      Icon(PhosphorIcons.mapPin(PhosphorIconsStyle.fill),
                           size: 14, color: AppColors.orange500),
                       const SizedBox(width: 8),
                       Expanded(

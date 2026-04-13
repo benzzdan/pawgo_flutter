@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class WalkerChatListScreen extends StatefulWidget {
   const WalkerChatListScreen({super.key});
@@ -323,7 +324,7 @@ class _WalkerChatListScreenState extends State<WalkerChatListScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline,
+            Icon(PhosphorIcons.warningCircle(),
                 size: 48, color: AppColors.textSecondary),
             const SizedBox(height: AppSpacing.md),
             Text(
@@ -361,8 +362,8 @@ class _WalkerChatListScreenState extends State<WalkerChatListScreen> {
                 color: AppColors.cacaoBrown.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(24),
               ),
-              child: const Icon(
-                Icons.chat_rounded,
+              child: Icon(
+                PhosphorIcons.chatCircle(),
                 size: 40,
                 color: AppColors.cacaoBrown,
               ),
@@ -495,7 +496,7 @@ class _WalkerChatListScreenState extends State<WalkerChatListScreen> {
                   // Dog name + status badge
                   Row(
                     children: [
-                      Icon(Icons.pets,
+                      Icon(PhosphorIcons.pawPrint(),
                           size: 12, color: AppColors.textTertiary),
                       const SizedBox(width: 4),
                       Text(
