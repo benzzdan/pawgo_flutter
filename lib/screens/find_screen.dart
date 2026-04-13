@@ -9,6 +9,18 @@ import 'package:pawgo/services/geocoding_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+class FindScreenLayout {
+  static const double walkerCardSpacing = 16.0;
+  static const double searchBarTopPadding = 16.0;
+  static const double searchBarBottomPadding = 16.0;
+  static const double filterButtonSpacing = 12.0;
+  static const double horizontalPadding = 24.0;
+  static const double nameFontSize = 18.0;
+  static const double ratingFontSize = 14.0;
+  static const double bioFontSize = 13.0;
+  static const FontWeight nameFontWeight = FontWeight.w800;
+}
+
 class AdvancedFilters {
   final double? maxDistanceKm;
   final double? minRate;
@@ -506,7 +518,8 @@ class _FindScreenState extends State<FindScreen> {
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
       itemCount: _filteredWalkers.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 24),
+      separatorBuilder: (_, __) =>
+          const SizedBox(height: FindScreenLayout.walkerCardSpacing),
       itemBuilder: (context, index) {
         final walker = _filteredWalkers[index];
         return _WalkerCard(walker: walker);
@@ -712,7 +725,7 @@ class _WalkerCard extends StatelessWidget {
                       style: GoogleFonts.nunito(
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
-                        color: AppColors.textPrimary,
+                        color: AppColors.orange500,
                       ),
                     ),
                     Text(
