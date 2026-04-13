@@ -71,6 +71,11 @@ class NotificationRouter {
         );
       case 'walk_completed':
         return const NotificationNavigation(route: '/home', tab: 'past');
+      case 'walk_request':
+        return NotificationNavigation(
+          route: '/walk-request',
+          arguments: bookingId != null ? {'booking_id': bookingId} : null,
+        );
       default:
         return null;
     }

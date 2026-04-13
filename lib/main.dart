@@ -27,6 +27,7 @@ import 'package:pawgo/screens/walker_application_step4_screen.dart';
 import 'package:pawgo/screens/application_status_screen.dart';
 import 'package:pawgo/screens/walker_chat_list_screen.dart';
 import 'package:pawgo/screens/earnings_screen.dart';
+import 'package:pawgo/screens/walk_request_screen.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:pawgo/services/ad_service.dart';
 import 'package:pawgo/services/analytics_service.dart';
@@ -170,6 +171,7 @@ class PawgoApp extends StatelessWidget {
                   const ApplicationStatusScreen(),
               '/walker-chat-list': (context) => const WalkerChatListScreen(),
               '/earnings': (context) => const EarningsScreen(),
+              '/walk-request': (context) => const WalkRequestScreen(),
             };
             final builder = routes[settings.name];
             if (builder != null) {
