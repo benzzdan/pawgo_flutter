@@ -544,7 +544,6 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [

@@ -68,15 +68,24 @@ Future<void> main() async {
     return true;
   };
 
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-    ),
-  );
-
   AuthService.instance.initialize();
   await ThemeService.instance.initialize();
+
+  // Set initial status bar style and update when theme changes
+  void updateStatusBar(ThemeMode mode) {
+    final brightness = mode == ThemeMode.dark ? Brightness.light : Brightness.dark;
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: brightness,
+      ),
+    );
+  }
+  updateStatusBar(ThemeService.instance.themeMode.value);
+  ThemeService.instance.themeMode.addListener(() {
+    updateStatusBar(ThemeService.instance.themeMode.value);
+  });
+
   runApp(const PawgoApp());
 }
 

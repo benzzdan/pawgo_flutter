@@ -317,9 +317,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
         elevation: 0,
         title: Text(
           'My Walk Sessions',
