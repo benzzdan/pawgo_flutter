@@ -659,6 +659,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'color': AppColors.blue600,
         'bgColor': AppColors.blue50,
         'label': 'Notifications',
+        'route': '/notification-preferences',
       },
       {
         'icon': PhosphorIcons.creditCard(),
