@@ -34,6 +34,7 @@ import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/role_service.dart';
 import 'package:pawgo/services/theme_service.dart';
 import 'package:pawgo/services/auth_service.dart';
+import 'package:pawgo/services/notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -107,6 +108,7 @@ class PawgoApp extends StatelessWidget {
     if (session != null) {
       RoleService.instance.initialize();
       GpsBroadcastService.instance.resumeIfActiveWalk();
+      NotificationService.instance.initialize();
     }
 
     return ValueListenableBuilder<ThemeMode>(
@@ -188,6 +190,7 @@ class _AuthGateState extends State<_AuthGate> {
           AnalyticsService.instance.identify(userId);
         }
         RoleService.instance.initialize();
+        NotificationService.instance.initialize();
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             Navigator.pushReplacementNamed(context, '/home');
@@ -199,6 +202,8 @@ class _AuthGateState extends State<_AuthGate> {
         AnalyticsService.instance.reset();
         RoleService.instance.reset();
         GpsBroadcastService.instance.stopBroadcasting();
+        NotificationService.instance.removeToken();
+        NotificationService.instance.dispose();
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && ModalRoute.of(context)?.settings.name != '/') {
             Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
