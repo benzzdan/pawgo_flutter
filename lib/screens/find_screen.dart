@@ -117,11 +117,16 @@ class _FindScreenState extends State<FindScreen> {
   }
 
   List<Walker> get _filteredWalkers {
-    return _walkers.where((w) {
-      if (_selectedFilter == 'available') return w.isEnabled;
-      if (_selectedFilter == 'top-rated') return w.rating >= 4.9;
-      return true;
-    }).toList();
+    switch (_selectedFilter) {
+      case 'available':
+        return _walkers.where((w) => w.isEnabled).toList();
+      case 'top-rated':
+        final filtered = _walkers.where((w) => w.rating >= 4.5).toList();
+        filtered.sort((a, b) => b.rating.compareTo(a.rating));
+        return filtered;
+      default:
+        return _walkers;
+    }
   }
 
   @override
