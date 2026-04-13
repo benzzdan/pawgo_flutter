@@ -6,9 +6,10 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:pawgo/config/env.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/widgets/celebration_overlay.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class MyDogsScreen extends StatefulWidget {
   const MyDogsScreen({super.key});
@@ -24,6 +25,7 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
   String? _error;
   bool _hasAnimated = false;
   bool _isRefreshing = false;
+  bool _wasDogListEmpty = false;
 
   @override
   void initState() {
@@ -48,15 +50,18 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
           .select()
           .eq('owner_id', userId)
           .order('created_at', ascending: false));
+      final newDogs = List<Map<String, dynamic>>.from(data);
+      final shouldCelebrate = _wasDogListEmpty && newDogs.isNotEmpty;
       setState(() {
-        _dogs = List<Map<String, dynamic>>.from(data);
+        _dogs = newDogs;
         _loading = false;
+        _wasDogListEmpty = newDogs.isEmpty;
       });
 
-      // Check if this is the user's first dog (count == 1).
-      if (_dogs.length == 1) {
+      // Celebrate when transitioning from empty to having dogs.
+      if (shouldCelebrate) {
         final dogName = _dogs.first['name'] as String? ?? 'Your dog';
-        await _showFirstDogCelebration(dogName);
+        _showFirstDogCelebration(dogName);
       }
     } catch (e) {
       final appError = AppError.from(e);
@@ -72,22 +77,14 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
     }
   }
 
-  Future<void> _showFirstDogCelebration(String dogName) async {
-    final prefs = await SharedPreferences.getInstance();
-    final userId = _supabase.auth.currentUser?.id ?? 'unknown';
-    final key = 'first_dog_celebration_seen_$userId';
-
-    if (prefs.getBool(key) == true) return;
-
-    await prefs.setBool(key, true);
-
+  void _showFirstDogCelebration(String dogName) {
     if (!mounted) return;
 
     CelebrationOverlay.show(
       context,
       title: 'Welcome to the Pack!',
       subtitle: '$dogName is ready for adventures',
-      illustrationAsset: 'lib/assets/illustrations/dog_happy.svg',
+      illustrationAsset: 'assets/illustrations/corgi_celebration.gif',
       confettiColors: const [
         Color(0xFFF4A832), // Golden Paw
         Color(0xFFC07D4D), // Warm Caramel
@@ -242,7 +239,7 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.add, color: Colors.white, size: 20),
+                    Icon(PhosphorIcons.plus(PhosphorIconsStyle.bold), color: Colors.white, size: 20),
                     const SizedBox(width: 8),
                     Text(
                       'Add a Dog',
@@ -283,7 +280,7 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.wifi_off, size: 48, color: AppColors.gray400),
+            Icon(PhosphorIcons.wifiSlash(), size: 48, color: AppColors.gray400),
             const SizedBox(height: 16),
             Text(
               'Unable to load your dogs. Please try again.',
@@ -356,7 +353,7 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
                 child: Padding(
                   padding: const EdgeInsets.only(top: 8, bottom: 4),
                   child: Icon(
-                    Icons.pets,
+                    PhosphorIcons.pawPrint(),
                     color: AppColors.orange500,
                     size: 24,
                   )
@@ -775,11 +772,15 @@ class _DogAvatar extends StatelessWidget {
   }
 
   Widget _buildPhotoAvatar() {
+    final headers = {
+      'apikey': Env.current.supabaseAnonKey,
+    };
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
       child: Image.network(
         photoUrl!,
         key: ValueKey(photoUrl),
+        headers: headers,
         width: 80,
         height: 80,
         fit: BoxFit.cover,
@@ -789,40 +790,15 @@ class _DogAvatar extends StatelessWidget {
   }
 
   Widget _buildIllustrationAvatar() {
-    return Stack(
-      children: [
-        // Warm background.
-        Container(
-          color: const Color(0xFFFFF5E6), // Soft Cream
+    return Container(
+      color: const Color(0xFFFFF5E6), // Soft Cream
+      child: Center(
+        child: Icon(
+          PhosphorIcons.pawPrint(),
+          size: 40,
+          color: const Color(0xFFC07D4D), // Warm Caramel
         ),
-        // SVG illustration.
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: SvgPicture.asset(
-              'lib/assets/illustrations/dog_sitting.svg',
-              width: 64,
-              height: 64,
-            ),
-          ),
-        ),
-        // Subtle gradient overlay (bottom to top) for warmth.
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                colors: [
-                  const Color(0xFF4A2C2A).withValues(alpha: 0.12),
-                  Colors.transparent,
-                ],
-                stops: const [0.0, 0.4],
-              ),
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -887,7 +863,7 @@ class _AddDogCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
               ),
               child:
-                  const Icon(Icons.add, color: AppColors.orange500, size: 32),
+                  Icon(PhosphorIcons.plus(PhosphorIconsStyle.bold), color: AppColors.orange500, size: 32),
             ),
             const SizedBox(height: 12),
             Text(
@@ -977,12 +953,15 @@ class _DogFormScreenState extends State<_DogFormScreen> {
 
     final bytes = await _pickedImage!.readAsBytes();
     final ext = _pickedImage!.path.split('.').last.toLowerCase();
-    final path = '$dogId/photo.$ext';
+    // Normalize extension — image_picker may return .heic on iOS
+    final normalizedExt = (ext == 'heic' || ext == 'heif') ? 'jpg' : ext;
+    final mimeType = 'image/${normalizedExt == 'jpg' ? 'jpeg' : normalizedExt}';
+    final path = '$dogId/photo.$normalizedExt';
 
     await _supabase.storage.from('dog-photos').uploadBinary(
           path,
           bytes,
-          fileOptions: const FileOptions(upsert: true),
+          fileOptions: FileOptions(upsert: true, contentType: mimeType),
         );
 
     final publicUrl =
@@ -1031,11 +1010,16 @@ class _DogFormScreenState extends State<_DogFormScreen> {
 
       // Upload photo if picked
       if (_pickedImage != null) {
-        final url = await _uploadPhoto(dogId);
-        if (url != null) {
-          await _supabase
-              .from('dogs')
-              .update({'photo_url': url}).eq('id', dogId);
+        try {
+          final url = await _uploadPhoto(dogId);
+          if (url != null) {
+            await _supabase
+                .from('dogs')
+                .update({'photo_url': url}).eq('id', dogId);
+          }
+        } catch (uploadError) {
+          debugPrint('Photo upload failed: $uploadError');
+          // Continue — dog record is saved, photo can be added later via edit.
         }
       }
 
@@ -1064,7 +1048,7 @@ class _DogFormScreenState extends State<_DogFormScreen> {
         backgroundColor: AppColors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+          icon: Icon(PhosphorIcons.arrowLeft(), color: AppColors.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -1103,6 +1087,9 @@ class _DogFormScreenState extends State<_DogFormScreen> {
                         : (_photoUrl != null && _photoUrl!.isNotEmpty)
                             ? Image.network(
                                 _photoUrl!,
+                                headers: {
+                                  'apikey': Env.current.supabaseAnonKey,
+                                },
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, __, ___) =>
                                     _photoPlaceholder(),
@@ -1239,7 +1226,7 @@ class _DogFormScreenState extends State<_DogFormScreen> {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const Icon(Icons.camera_alt, color: AppColors.orange500, size: 32),
+        Icon(PhosphorIcons.camera(), color: AppColors.orange500, size: 32),
         const SizedBox(height: 4),
         Text(
           'Photo',

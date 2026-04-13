@@ -5,6 +5,7 @@ import 'package:pawgo/services/role_service.dart';
 import 'package:pawgo/services/theme_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -141,7 +142,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.arrow_back,
+                      child: Icon(PhosphorIcons.arrowLeft(),
                           size: 20, color: Colors.white),
                     ),
                   ),
@@ -249,7 +250,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.edit,
+                      child: Icon(PhosphorIcons.pencilSimple(),
                           size: 16, color: AppColors.textSecondary),
                     ),
                   ],
@@ -298,7 +299,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ],
                     ),
-                    child: const Icon(Icons.add, size: 18, color: Colors.white),
+                    child: Icon(PhosphorIcons.plus(PhosphorIconsStyle.bold), size: 18, color: Colors.white),
                   ),
                 ),
               ],
@@ -465,12 +466,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               : _applicationStatus == 'rejected'
                   ? 'View details and re-apply options'
                   : 'Check your application status';
-      icon = Icons.assignment_outlined;
+      icon = PhosphorIcons.clipboardText();
       route = '/walker-application-status';
     } else {
       title = 'Become a Walker';
       subtitle = 'Earn money walking dogs in your neighborhood';
-      icon = Icons.directions_walk;
+      icon = PhosphorIcons.personSimpleWalk();
       route = '/walker-application';
     }
 
@@ -534,7 +535,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ),
-            const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.white),
+            Icon(PhosphorIcons.caretRight(), size: 16, color: Colors.white),
           ],
         ),
       ),
@@ -546,7 +547,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final activeColor =
         isWalkerMode ? AppColors.cacaoBrown : AppColors.warmCaramel;
     final modeLabel = isWalkerMode ? 'Walker Mode' : 'Owner Mode';
-    final modeIcon = isWalkerMode ? Icons.directions_walk : Icons.pets;
+    final modeIcon = isWalkerMode ? PhosphorIcons.personSimpleWalk() : PhosphorIcons.pawPrint();
     final switchLabel = isWalkerMode ? 'Switch to Owner' : 'Switch to Walker';
 
     return Container(
@@ -630,7 +631,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                    isWalkerMode ? Icons.pets : Icons.directions_walk,
+                    isWalkerMode ? PhosphorIcons.pawPrint() : PhosphorIcons.personSimpleWalk(),
                     size: 18,
                     color: Colors.white,
                   ),
@@ -655,19 +656,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildSettingsSection() {
     final items = [
       {
-        'icon': Icons.notifications,
+        'icon': PhosphorIcons.bell(),
         'color': AppColors.blue600,
         'bgColor': AppColors.blue50,
         'label': 'Notifications',
       },
       {
-        'icon': Icons.credit_card,
+        'icon': PhosphorIcons.creditCard(),
         'color': AppColors.green600,
         'bgColor': AppColors.green50,
         'label': 'Payment Methods',
       },
       {
-        'icon': Icons.help_outline,
+        'icon': PhosphorIcons.question(),
         'color': AppColors.orange500,
         'bgColor': AppColors.orange50,
         'label': 'Help & Support',
@@ -764,7 +765,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
-                  isDark ? Icons.dark_mode : Icons.light_mode,
+                  isDark ? PhosphorIcons.moon() : PhosphorIcons.sun(),
                   size: 18,
                   color: AppColors.purple600,
                 ),
@@ -819,10 +820,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildLogout() {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () async {
-        await Supabase.instance.client.auth.signOut();
-        // _AuthGate listener handles RoleService.reset(),
-        // GpsBroadcastService.stopBroadcasting(), and navigation to '/'.
+        try {
+          await Supabase.instance.client.auth.signOut();
+        } catch (e) {
+          debugPrint('Sign out error: $e');
+        }
+        // Always navigate to login, whether signOut succeeded or threw
+        if (mounted) {
+          Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+        }
       },
       child: Container(
         decoration: BoxDecoration(
@@ -847,7 +855,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child:
-                    const Icon(Icons.logout, size: 18, color: AppColors.red500),
+                    Icon(PhosphorIcons.signOut(), size: 18, color: AppColors.red500),
               ),
               const SizedBox(width: 12),
               Text(
@@ -930,7 +938,7 @@ class _AddressCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
-              address.icon == 'home' ? Icons.home : Icons.work,
+              address.icon == 'home' ? PhosphorIcons.house() : PhosphorIcons.briefcase(),
               size: 20,
               color: address.icon == 'home'
                   ? AppColors.blue600
@@ -996,7 +1004,7 @@ class _AddressCard extends StatelessWidget {
                   color: AppColors.surface,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.edit,
+                child: Icon(PhosphorIcons.pencilSimple(),
                     size: 14, color: AppColors.textSecondary),
               ),
               const SizedBox(width: 4),
@@ -1008,7 +1016,7 @@ class _AddressCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child:
-                    const Icon(Icons.delete, size: 14, color: AppColors.red500),
+                    Icon(PhosphorIcons.trash(), size: 14, color: AppColors.red500),
               ),
             ],
           ),

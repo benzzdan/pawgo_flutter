@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class WalkerBookingsScreen extends StatefulWidget {
   const WalkerBookingsScreen({super.key});
@@ -396,7 +397,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, size: 48, color: AppColors.textSecondary),
+            Icon(PhosphorIcons.warningCircle(), size: 48, color: AppColors.textSecondary),
             const SizedBox(height: 16),
             Text(
               _error!,
@@ -422,7 +423,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.directions_walk, size: 64, color: AppColors.textSecondary.withValues(alpha: 0.5)),
+            Icon(PhosphorIcons.personSimpleWalk(), size: 64, color: AppColors.textSecondary.withValues(alpha: 0.5)),
             const SizedBox(height: 16),
             Text(
               _selectedTab == 2 ? 'No Completed Walks' : 'No Walks Assigned Yet',
@@ -491,10 +492,10 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
                         child: Image.network(
                           owner!['avatar_url'],
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Icon(Icons.person, color: AppColors.orange500),
+                          errorBuilder: (_, __, ___) => Icon(PhosphorIcons.user(), color: AppColors.orange500),
                         ),
                       )
-                    : const Icon(Icons.person, color: AppColors.orange500),
+                    : Icon(PhosphorIcons.user(), color: AppColors.orange500),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -543,7 +544,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
                       ? (_, __) {}
                       : null,
                   child: dogPhotoUrl == null
-                      ? const Icon(Icons.pets, size: 20, color: AppColors.orange500)
+                      ? Icon(PhosphorIcons.pawPrint(), size: 20, color: AppColors.orange500)
                       : null,
                 ),
                 const SizedBox(width: 12),
@@ -563,7 +564,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
           ],
           // Scheduled time
           _DetailRow(
-            icon: Icons.calendar_today,
+            icon: PhosphorIcons.calendarBlank(),
             iconColor: AppColors.blue600,
             bgColor: AppColors.blue50,
             text: _formatDateTime(scheduledAt),
@@ -588,7 +589,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
           if (durationMinutes != null || totalPrice != null) ...[
             const SizedBox(height: 10),
             _DetailRow(
-              icon: Icons.access_time,
+              icon: PhosphorIcons.clock(),
               iconColor: AppColors.purple600,
               bgColor: AppColors.purple50,
               text: [
@@ -599,43 +600,63 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
           ],
           const SizedBox(height: 16),
           // Action buttons
-          _buildActionButtons(bookingId, status),
+          _buildActionButtons(bookingId, status, scheduledAt),
         ],
       ),
     );
   }
 
-  Widget _buildActionButtons(String bookingId, String status) {
+  Widget _buildActionButtons(String bookingId, String status, String? scheduledAt) {
     final isStarting = _startingWalkId == bookingId;
 
     if (status == 'confirmed' || status == 'walker_en_route') {
-      return Row(
+      // Only allow starting within 5 minutes of scheduled time
+      final scheduledTime = scheduledAt != null ? DateTime.tryParse(scheduledAt) : null;
+      final now = DateTime.now().toUtc();
+      final canStart = scheduledTime == null ||
+          now.isAfter(scheduledTime.subtract(const Duration(minutes: 5)));
+
+      final minutesUntilStart = scheduledTime != null
+          ? scheduledTime.subtract(const Duration(minutes: 5)).difference(now).inMinutes
+          : 0;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: SizedBox(
-              height: 48,
-              child: ElevatedButton.icon(
-                onPressed: isStarting ? null : () => _startWalk(bookingId),
-                icon: isStarting
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Icon(Icons.play_arrow, color: Colors.white),
-                label: Text(
-                  isStarting ? 'Starting...' : 'Start Walk',
-                  style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.green600,
-                  disabledBackgroundColor: AppColors.green600.withValues(alpha: 0.7),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  elevation: 2,
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    onPressed: isStarting || !canStart ? null : () => _startWalk(bookingId),
+                    icon: isStarting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : Icon(PhosphorIcons.play(PhosphorIconsStyle.fill),
+                            color: canStart ? Colors.white : Colors.white54),
+                    label: Text(
+                      isStarting
+                          ? 'Starting...'
+                          : canStart
+                              ? 'Start Walk'
+                              : 'Starts in ${minutesUntilStart}m',
+                      style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: canStart ? AppColors.green600 : AppColors.gray400,
+                      disabledBackgroundColor: canStart
+                          ? AppColors.green600.withValues(alpha: 0.7)
+                          : AppColors.gray400,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: canStart ? 2 : 0,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
           const SizedBox(width: 10),
           SizedBox(
             height: 48,
@@ -647,7 +668,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
                   'other_party_name': _bookings.firstWhere((b) => b['id'] == bookingId)['users']?['full_name'] ?? 'Owner',
                 });
               },
-              icon: const Icon(Icons.chat_bubble_outline, color: AppColors.orange500),
+              icon: Icon(PhosphorIcons.chatCircle(), color: AppColors.orange500),
               style: IconButton.styleFrom(
                 backgroundColor: AppColors.orange50,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -655,6 +676,27 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
             ),
           ),
         ],
+      ),
+      if (!canStart)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(PhosphorIcons.clock(), size: 14, color: AppColors.textTertiary),
+              const SizedBox(width: 6),
+              Text(
+                'Available to start 5 min before scheduled time',
+                style: GoogleFonts.nunito(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textTertiary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
       );
     } else if (status == 'walk_started') {
       return Row(
@@ -664,7 +706,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
               height: 48,
               child: ElevatedButton.icon(
                 onPressed: () => _endWalk(bookingId),
-                icon: const Icon(Icons.stop, color: Colors.white),
+                icon: Icon(PhosphorIcons.stop(PhosphorIconsStyle.fill), color: Colors.white),
                 label: Text(
                   'End Walk',
                   style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
@@ -687,7 +729,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
                   'booking_id': bookingId,
                 });
               },
-              icon: const Icon(Icons.map, color: AppColors.blue600),
+              icon: Icon(PhosphorIcons.mapTrifold(), color: AppColors.blue600),
               style: IconButton.styleFrom(
                 backgroundColor: AppColors.blue50,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -705,7 +747,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
                   'other_party_name': _bookings.firstWhere((b) => b['id'] == bookingId)['users']?['full_name'] ?? 'Owner',
                 });
               },
-              icon: const Icon(Icons.chat_bubble_outline, color: AppColors.orange500),
+              icon: Icon(PhosphorIcons.chatCircle(), color: AppColors.orange500),
               style: IconButton.styleFrom(
                 backgroundColor: AppColors.orange50,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

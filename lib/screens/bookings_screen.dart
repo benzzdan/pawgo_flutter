@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/booking_status_service.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class BookingsScreen extends StatefulWidget {
   const BookingsScreen({super.key, this.bookingStatusService});
@@ -250,8 +251,8 @@ class _BookingsScreenState extends State<BookingsScreen> {
         children: [
           Icon(
             _connectionState == BookingStatusConnectionState.error
-                ? Icons.error_outline
-                : Icons.wifi_off,
+                ? PhosphorIcons.warningCircle()
+                : PhosphorIcons.wifiSlash(),
             size: 16,
             color: _connectionState == BookingStatusConnectionState.error
                 ? const Color(0xFFDC2626)
@@ -273,7 +274,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
           GestureDetector(
             onTap: _fetchBookings,
             child: Icon(
-              Icons.refresh,
+              PhosphorIcons.arrowsClockwise(),
               size: 18,
               color: _connectionState == BookingStatusConnectionState.error
                   ? const Color(0xFFDC2626)
@@ -363,7 +364,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.error_outline, size: 48, color: AppColors.red500),
+              Icon(PhosphorIcons.warningCircle(), size: 48, color: AppColors.red500),
               const SizedBox(height: 12),
               Text(
                 'Failed to load bookings',
@@ -543,14 +544,14 @@ class _BookingsScreenState extends State<BookingsScreen> {
               // Scheduled time
               if (scheduledAt != null) ...[
                 _DetailRow(
-                  icon: Icons.calendar_today,
+                  icon: PhosphorIcons.calendarBlank(),
                   iconColor: AppColors.blue600,
                   bgColor: AppColors.blue50,
                   text: DateFormat('MMM d, yyyy').format(scheduledAt),
                 ),
                 const SizedBox(height: 10),
                 _DetailRow(
-                  icon: Icons.access_time,
+                  icon: PhosphorIcons.clock(),
                   iconColor: AppColors.purple600,
                   bgColor: AppColors.purple50,
                   text: DateFormat('h:mm a').format(scheduledAt),
@@ -560,7 +561,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
               // Duration
               if (duration != null)
                 _DetailRow(
-                  icon: Icons.timer,
+                  icon: PhosphorIcons.timer(),
                   iconColor: AppColors.green600,
                   bgColor: AppColors.green50,
                   text: '$duration min',
@@ -569,7 +570,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
               // Started / Completed times
               if (startedAt != null) ...[
                 _DetailRow(
-                  icon: Icons.play_arrow,
+                  icon: PhosphorIcons.play(PhosphorIconsStyle.fill),
                   iconColor: AppColors.green600,
                   bgColor: AppColors.green50,
                   text:
@@ -579,7 +580,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
               ],
               if (completedAt != null) ...[
                 _DetailRow(
-                  icon: Icons.check_circle,
+                  icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
                   iconColor: AppColors.green600,
                   bgColor: AppColors.green50,
                   text:
@@ -590,7 +591,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
               // Price
               if (price != null) ...[
                 _DetailRow(
-                  icon: Icons.attach_money,
+                  icon: PhosphorIcons.currencyDollar(),
                   iconColor: AppColors.orange500,
                   bgColor: AppColors.orange50,
                   text: '\$${price.toStringAsFixed(2)} MXN',
@@ -630,7 +631,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
                               ),
                               child: Row(
                                 children: [
-                                  Icon(Icons.shield,
+                                  Icon(PhosphorIcons.shield(PhosphorIconsStyle.fill),
                                       size: 18,
                                       color: _claimStatusColor(claimStatus)),
                                   const SizedBox(width: 10),
@@ -750,7 +751,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
                             'booking_id': booking['id'],
                           });
                     },
-                    icon: const Icon(Icons.shield, size: 18),
+                    icon: Icon(PhosphorIcons.shield(PhosphorIconsStyle.fill), size: 18),
                     label: Text('File Insurance Claim',
                         style: GoogleFonts.nunito(
                             fontSize: 15,
@@ -1003,14 +1004,14 @@ class _BookingCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right,
+                Icon(PhosphorIcons.caretRight(),
                     color: AppColors.textTertiary, size: 24),
               ],
             ),
             const SizedBox(height: 16),
             // Dog name
             _DetailRow(
-              icon: Icons.pets,
+              icon: PhosphorIcons.pawPrint(),
               iconColor: AppColors.orange500,
               bgColor: AppColors.orange50,
               text: dogName,
@@ -1019,14 +1020,14 @@ class _BookingCard extends StatelessWidget {
             // Date
             if (scheduledAt != null) ...[
               _DetailRow(
-                icon: Icons.calendar_today,
+                icon: PhosphorIcons.calendarBlank(),
                 iconColor: AppColors.blue600,
                 bgColor: AppColors.blue50,
                 text: DateFormat('MMM d, yyyy').format(scheduledAt),
               ),
               const SizedBox(height: 10),
               _DetailRow(
-                icon: Icons.access_time,
+                icon: PhosphorIcons.clock(),
                 iconColor: AppColors.purple600,
                 bgColor: AppColors.purple50,
                 text:
@@ -1037,7 +1038,7 @@ class _BookingCard extends StatelessWidget {
             if (price != null) ...[
               const SizedBox(height: 10),
               _DetailRow(
-                icon: Icons.attach_money,
+                icon: PhosphorIcons.currencyDollar(),
                 iconColor: AppColors.green600,
                 bgColor: AppColors.green50,
                 text: '\$${price.toStringAsFixed(2)} MXN',

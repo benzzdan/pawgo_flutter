@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -6,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/role_service.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class WalkerChatScreen extends StatefulWidget {
   const WalkerChatScreen({super.key});
@@ -29,9 +31,15 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
   bool _isUploading = false;
   RealtimeChannel? _channel;
   RealtimeChannel? _bookingChannel;
+  RealtimeChannel? _typingChannel;
   String? _currentUserId;
   String? _bookingStatus;
   bool _isDisconnected = false;
+  bool _otherPartyTyping = false;
+  Timer? _typingDebounce;
+  Timer? _typingTimeout;
+  Timer? _disconnectDebounce;
+  Timer? _pollTimer;
 
   /// Whether chat input is enabled (only during active walks).
   bool get _isChatActive => _bookingStatus == 'walk_started';
@@ -58,17 +66,29 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
     }
   }
 
+  bool _disposed = false;
+
   @override
   void dispose() {
+    _disposed = true;
     _messageController.dispose();
     _scrollController.dispose();
     _channel?.unsubscribe();
     _bookingChannel?.unsubscribe();
+    _typingChannel?.unsubscribe();
+    _typingDebounce?.cancel();
+    _typingTimeout?.cancel();
+    _disconnectDebounce?.cancel();
+    _pollTimer?.cancel();
     super.dispose();
   }
 
   Future<void> _fetchBookingStatus() async {
     if (_bookingId == null) return;
+
+    // Always subscribe to messages immediately so they arrive in real-time
+    _subscribeToMessages();
+
     try {
       final data = await withRetry(() => _supabase
           .from('bookings')
@@ -79,10 +99,6 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
       setState(() {
         _bookingStatus = data['status'] as String?;
       });
-      // Only subscribe to message Realtime if walk is active
-      if (_isChatActive) {
-        _subscribeToMessages();
-      }
       _subscribeToBookingStatus();
     } catch (e) {
       final appError = AppError.from(e);
@@ -94,7 +110,6 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
       if (mounted) {
         // Default to allowing chat on error (fail-open for UX)
         setState(() => _bookingStatus = 'walk_started');
-        _subscribeToMessages();
       }
     }
   }
@@ -117,17 +132,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
           callback: (payload) {
             final newStatus = payload.newRecord['status'] as String?;
             if (!mounted || newStatus == null) return;
-            final wasActive = _isChatActive;
             setState(() => _bookingStatus = newStatus);
-            // If walk just became active, start message subscription
-            if (!wasActive && _isChatActive) {
-              _subscribeToMessages();
-            }
-            // If walk just ended, clean up message subscription
-            if (wasActive && !_isChatActive) {
-              _channel?.unsubscribe();
-              _channel = null;
-            }
           },
         )
         .subscribe();
@@ -176,16 +181,128 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
           ),
           callback: (payload) {
             final newMessage = payload.newRecord;
-            // Fetch full message with user join
-            _fetchSingleMessage(newMessage['id'].toString());
+            // Clear typing indicator when a message arrives from the other party
+            final senderId = newMessage['sender_id']?.toString();
+            if (senderId != _currentUserId && mounted) {
+              setState(() => _otherPartyTyping = false);
+              _typingTimeout?.cancel();
+            }
+            final messageId = newMessage['id']?.toString();
+            if (messageId == null || !mounted) return;
+
+            // Check for duplicate
+            final exists = _messages.any((m) => m['id'].toString() == messageId);
+            if (exists) return;
+
+            // Use payload directly if it has content, then fetch user join in background
+            if (newMessage['content'] != null || newMessage['media_url'] != null) {
+              setState(() {
+                _messages.add(Map<String, dynamic>.from(newMessage));
+              });
+              _scrollToBottom();
+              // Fetch full message with user join to update sender name/avatar
+              _fetchSingleMessage(messageId);
+            } else {
+              _fetchSingleMessage(messageId);
+            }
           },
         )
         .subscribe((status, [error]) {
-      if (!mounted) return;
-      setState(() {
-        _isDisconnected = status != RealtimeSubscribeStatus.subscribed;
-      });
+      if (_disposed) return;
+      if (status == RealtimeSubscribeStatus.subscribed) {
+        _disconnectDebounce?.cancel();
+        if (_isDisconnected) setState(() => _isDisconnected = false);
+      } else {
+        // Only show banner after 5s of sustained disconnection
+        _disconnectDebounce?.cancel();
+        _disconnectDebounce = Timer(const Duration(seconds: 5), () {
+          if (!_disposed) setState(() => _isDisconnected = true);
+        });
+      }
     });
+
+    _subscribeToTyping();
+    _startMessagePolling();
+  }
+
+  void _startMessagePolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted || _bookingId == null) return;
+      _pollForNewMessages();
+    });
+  }
+
+  Future<void> _pollForNewMessages() async {
+    if (_bookingId == null) return;
+    try {
+      // Only fetch messages newer than the last one we have
+      var query = _supabase
+          .from('messages')
+          .select('*, users(full_name, avatar_url)')
+          .eq('booking_id', _bookingId!);
+
+      if (_messages.isNotEmpty) {
+        final lastCreatedAt = _messages.last['created_at']?.toString();
+        if (lastCreatedAt != null) {
+          query = query.gt('created_at', lastCreatedAt);
+        }
+      }
+
+      final data = await query.order('created_at', ascending: true);
+      if (!mounted || data.isEmpty) return;
+
+      var added = false;
+      for (final msg in data) {
+        final msgId = msg['id'].toString();
+        final exists = _messages.any((m) => m['id'].toString() == msgId);
+        if (!exists) {
+          _messages.add(Map<String, dynamic>.from(msg));
+          added = true;
+        }
+      }
+
+      if (added) {
+        setState(() {});
+        _scrollToBottom();
+      }
+    } catch (_) {}
+  }
+
+  void _subscribeToTyping() {
+    _typingChannel?.unsubscribe();
+    _typingChannel = _supabase
+        .channel('typing:$_bookingId')
+        .onBroadcast(
+          event: 'typing',
+          callback: (payload) {
+            final senderId = payload['user_id']?.toString();
+            if (senderId == _currentUserId || !mounted) return;
+
+            setState(() => _otherPartyTyping = true);
+            _scrollToBottom();
+
+            // Auto-clear typing after 3s of no typing events
+            _typingTimeout?.cancel();
+            _typingTimeout = Timer(const Duration(seconds: 3), () {
+              if (mounted) setState(() => _otherPartyTyping = false);
+            });
+          },
+        )
+        .subscribe();
+  }
+
+  void _broadcastTyping() {
+    if (_typingChannel == null || _bookingId == null) return;
+
+    // Debounce: only send typing event at most every 1s
+    if (_typingDebounce?.isActive ?? false) return;
+    _typingDebounce = Timer(const Duration(seconds: 1), () {});
+
+    _typingChannel!.sendBroadcastMessage(
+      event: 'typing',
+      payload: {'user_id': _currentUserId},
+    );
   }
 
   Future<void> _fetchSingleMessage(String messageId) async {
@@ -196,17 +313,24 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
           .eq('id', messageId)
           .single();
 
-      if (mounted) {
-        // Avoid duplicates
-        final exists = _messages.any((m) => m['id'].toString() == messageId);
-        if (!exists) {
-          setState(() {
-            _messages.add(Map<String, dynamic>.from(data));
-          });
-          _scrollToBottom();
-        }
+      if (!mounted) return;
+
+      final idx = _messages.indexWhere((m) => m['id'].toString() == messageId);
+      if (idx >= 0) {
+        // Update existing message with full user join data
+        setState(() {
+          _messages[idx] = Map<String, dynamic>.from(data);
+        });
+      } else {
+        // Add if not already present
+        setState(() {
+          _messages.add(Map<String, dynamic>.from(data));
+        });
+        _scrollToBottom();
       }
-    } catch (_) {}
+    } catch (_) {
+      // Message was already added from payload — user join just won't show name
+    }
   }
 
   void _scrollToBottom() {
@@ -247,6 +371,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
           });
           _scrollToBottom();
         }
+        _notifyOtherParty(text.length > 100 ? '${text.substring(0, 100)}\u2026' : text);
       }
     } catch (e) {
       if (mounted) {
@@ -354,6 +479,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
           });
           _scrollToBottom();
         }
+        _notifyOtherParty(status);
       }
     } catch (e) {
       if (mounted) {
@@ -370,6 +496,23 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
     }
   }
 
+  /// Fire-and-forget push notification to the other party.
+  void _notifyOtherParty(String previewText) {
+    if (_bookingId == null) return;
+    // Don't await — notification is best-effort
+    _supabase.functions.invoke(
+      'send-notification',
+      body: {
+        'booking_id': _bookingId,
+        'sender_id': _currentUserId,
+        'type': 'new_message',
+        'title': _otherPartyName != null ? 'Message to $_otherPartyName' : 'New message',
+        'body': previewText,
+        'data': {'booking_id': _bookingId},
+      },
+    ).ignore();
+  }
+
   void _showMediaSourcePicker() {
     showModalBottomSheet(
       context: context,
@@ -377,7 +520,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
         child: Wrap(
           children: [
             ListTile(
-              leading: const Icon(Icons.camera_alt),
+              leading: Icon(PhosphorIcons.camera()),
               title: const Text('Take Photo'),
               onTap: () {
                 Navigator.pop(ctx);
@@ -385,7 +528,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.photo_library),
+              leading: Icon(PhosphorIcons.images()),
               title: const Text('Choose from Gallery'),
               onTap: () {
                 Navigator.pop(ctx);
@@ -427,7 +570,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
       color: AppColors.orange100,
       child: Row(
         children: [
-          const Icon(Icons.wifi_off, size: 16, color: AppColors.orange500),
+          Icon(PhosphorIcons.wifiSlash(), size: 16, color: AppColors.orange500),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -459,7 +602,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.arrow_back,
+              child: Icon(PhosphorIcons.arrowLeft(),
                   size: 20, color: AppColors.textPrimary),
             ),
           ),
@@ -525,18 +668,22 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
                       Container(
                         width: 6,
                         height: 6,
-                        decoration: const BoxDecoration(
-                          color: AppColors.green500,
+                        decoration: BoxDecoration(
+                          color: _otherPartyTyping
+                              ? AppColors.orange500
+                              : AppColors.green500,
                           shape: BoxShape.circle,
                         ),
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        'Active now',
+                        _otherPartyTyping ? 'Typing\u2026' : 'Active now',
                         style: GoogleFonts.nunito(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.green600,
+                          color: _otherPartyTyping
+                              ? AppColors.orange500
+                              : AppColors.green600,
                         ),
                       ),
                     ],
@@ -555,7 +702,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.chat_bubble_outline,
+            Icon(PhosphorIcons.chatCircle(),
                 size: 48,
                 color: AppColors.textTertiary.withValues(alpha: 0.5)),
             const SizedBox(height: 12),
@@ -580,11 +727,18 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
       );
     }
 
+    final itemCount = _messages.length + (_otherPartyTyping ? 1 : 0);
+
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      itemCount: _messages.length,
+      itemCount: itemCount,
       itemBuilder: (context, index) {
+        // Typing indicator as last item
+        if (_otherPartyTyping && index == itemCount - 1) {
+          return _buildTypingBubble();
+        }
+
         final msg = _messages[index];
         final showDateSeparator = _shouldShowDateSeparator(index);
         return Column(
@@ -601,6 +755,81 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
           ],
         );
       },
+    );
+  }
+
+  Widget _buildTypingBubble() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            margin: const EdgeInsets.only(right: 10),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [AppColors.orange400, AppColors.orange500],
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Center(
+              child: Text(
+                (_otherPartyName ?? '').isNotEmpty
+                    ? _otherPartyName![0].toUpperCase()
+                    : '?',
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0F0F0),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+                bottomLeft: Radius.circular(4),
+                bottomRight: Radius.circular(16),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 4,
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(3, (i) {
+                return TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  duration: const Duration(milliseconds: 600),
+                  curve: Curves.easeInOut,
+                  builder: (context, value, child) {
+                    return Container(
+                      margin: EdgeInsets.only(right: i < 2 ? 4 : 0),
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: AppColors.textTertiary
+                            .withValues(alpha: 0.4 + 0.4 * value),
+                        shape: BoxShape.circle,
+                      ),
+                    );
+                  },
+                );
+              }),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -632,10 +861,10 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
     if (!_isChatActive) return const SizedBox.shrink();
 
     final actions = [
-      {'icon': Icons.pets, 'label': 'Pee break', 'status': 'Pee break completed'},
-      {'icon': Icons.eco, 'label': 'Poop', 'status': 'Poop pickup completed'},
-      {'icon': Icons.water_drop, 'label': 'Water', 'status': 'Water break taken'},
-      {'icon': Icons.sports_tennis, 'label': 'Playing', 'status': 'Playing time!'},
+      {'icon': PhosphorIcons.pawPrint(), 'label': 'Pee break', 'status': 'Pee break completed'},
+      {'icon': PhosphorIcons.leaf(), 'label': 'Poop', 'status': 'Poop pickup completed'},
+      {'icon': PhosphorIcons.drop(), 'label': 'Water', 'status': 'Water break taken'},
+      {'icon': PhosphorIcons.tennisBall(), 'label': 'Playing', 'status': 'Playing time!'},
     ];
 
     return SingleChildScrollView(
@@ -703,7 +932,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
                       padding: EdgeInsets.all(8),
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.image,
+                  : Icon(PhosphorIcons.image(),
                       size: 18, color: AppColors.textSecondary),
             ),
           ),
@@ -717,7 +946,10 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
               ),
               child: TextField(
                 controller: _messageController,
-                onChanged: (val) => setState(() => _message = val),
+                onChanged: (val) {
+                  setState(() => _message = val);
+                  if (val.trim().isNotEmpty) _broadcastTyping();
+                },
                 onSubmitted: (_) => _handleSend(),
                 decoration: InputDecoration(
                   hintText: 'Type a message...',
@@ -762,7 +994,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
                         : null,
               ),
               child: Icon(
-                Icons.send,
+                PhosphorIcons.paperPlaneTilt(),
                 size: 18,
                 color: _message.trim().isNotEmpty && _isChatActive
                     ? Colors.white
@@ -793,8 +1025,8 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
           children: [
             Icon(
               _bookingStatus == 'walk_completed'
-                  ? Icons.lock_outline
-                  : Icons.chat_bubble_outline,
+                  ? PhosphorIcons.lock()
+                  : PhosphorIcons.chatCircle(),
               size: 18,
               color: AppColors.textTertiary,
             ),
@@ -987,8 +1219,8 @@ class _MessageBubble extends StatelessWidget {
           if (isVideo)
             Container(
               color: Colors.black87,
-              child: const Center(
-                child: Icon(Icons.play_circle_outline,
+              child: Center(
+                child: Icon(PhosphorIcons.playCircle(),
                     size: 48, color: Colors.white),
               ),
             )
@@ -998,8 +1230,8 @@ class _MessageBubble extends StatelessWidget {
               fit: BoxFit.cover,
               errorBuilder: (_, __, ___) => Container(
                 color: AppColors.surface,
-                child: const Center(
-                  child: Icon(Icons.broken_image,
+                child: Center(
+                  child: Icon(PhosphorIcons.imageBroken(),
                       size: 32, color: AppColors.textTertiary),
                 ),
               ),
@@ -1031,17 +1263,17 @@ class _MessageBubble extends StatelessWidget {
 
   Widget _buildStatusUpdate() {
     final content = message['content']?.toString() ?? '';
-    IconData icon = Icons.info_outline;
+    IconData icon = PhosphorIcons.info();
     Color color = AppColors.blue500;
 
     if (content.toLowerCase().contains('pee')) {
-      icon = Icons.pets;
+      icon = PhosphorIcons.pawPrint();
       color = AppColors.orange500;
     } else if (content.toLowerCase().contains('poop')) {
-      icon = Icons.eco;
+      icon = PhosphorIcons.leaf();
       color = AppColors.green600;
     } else if (content.toLowerCase().contains('water')) {
-      icon = Icons.water_drop;
+      icon = PhosphorIcons.drop();
       color = AppColors.blue500;
     }
 

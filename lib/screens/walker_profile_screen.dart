@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class WalkerProfileScreen extends StatefulWidget {
   const WalkerProfileScreen({super.key});
@@ -128,7 +129,7 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
                         color: AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.arrow_back,
+                      child: Icon(PhosphorIcons.arrowLeft(),
                           size: 20, color: AppColors.textPrimary),
                     ),
                   ),
@@ -165,7 +166,7 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.error_outline,
+            Icon(PhosphorIcons.warningCircle(),
                 size: 48, color: AppColors.textSecondary),
             const SizedBox(height: 16),
             Text(
@@ -266,7 +267,7 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.calendar_today,
+                    Icon(PhosphorIcons.calendarBlank(),
                         color: Colors.white, size: 20),
                     const SizedBox(width: 8),
                     Text(
@@ -354,7 +355,7 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white, width: 2),
                     ),
-                    child: const Icon(Icons.shield,
+                    child: Icon(PhosphorIcons.shield(PhosphorIconsStyle.fill),
                         color: Colors.white, size: 14),
                   ),
                 ),
@@ -377,7 +378,7 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    const Icon(Icons.star,
+                    Icon(PhosphorIcons.star(PhosphorIconsStyle.fill),
                         size: 16, color: AppColors.orange500),
                     const SizedBox(width: 4),
                     Text(
@@ -483,8 +484,8 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
           ),
           const SizedBox(height: 12),
           if (backgroundChecked)
-            const _VerificationBadge(
-              icon: Icons.shield,
+            _VerificationBadge(
+              icon: PhosphorIcons.shield(PhosphorIconsStyle.fill),
               iconColor: Colors.white,
               bgColor: AppColors.green500,
               gradientColors: [AppColors.green50, Color(0xFFECFDF5)],
@@ -571,7 +572,7 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
               if (rating != null)
                 Row(
                   children: [
-                    const Icon(Icons.star,
+                    Icon(PhosphorIcons.star(PhosphorIconsStyle.fill),
                         size: 18, color: AppColors.orange500),
                     const SizedBox(width: 4),
                     Text(
@@ -669,7 +670,7 @@ class _VerificationBadge extends StatelessWidget {
               ],
             ),
           ),
-          Icon(Icons.check, color: checkColor, size: 20),
+          Icon(PhosphorIcons.check(), color: checkColor, size: 20),
         ],
       ),
     );
@@ -802,7 +803,7 @@ class _ReviewCard extends StatelessWidget {
                       ...List.generate(
                         5,
                         (i) => Icon(
-                          Icons.star,
+                          PhosphorIcons.star(PhosphorIconsStyle.fill),
                           size: 12,
                           color: i < rating
                               ? AppColors.orange500

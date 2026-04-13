@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/widgets/stat_card.dart';
@@ -6,6 +8,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:pawgo/services/ad_service.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:pawgo/services/role_service.dart';
+import 'package:pawgo/screens/main_shell.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,11 +23,14 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> _walkers = [];
   bool _loading = true;
   String? _error;
-  BannerAd? _bannerAd;
   bool _isBannerAdLoaded = false;
+  final _adKey = GlobalKey();
   int _upcoming = 0;
   int _active = 0;
   int _completed = 0;
+  String? _activeBookingId;
+  RealtimeChannel? _bookingsChannel;
+  Timer? _statsPollTimer;
 
   @override
   void initState() {
@@ -30,20 +38,51 @@ class _HomeScreenState extends State<HomeScreen> {
     _fetchWalkers();
     _loadStats();
     _loadBannerAd();
+    _subscribeToBookings();
+    _startStatsPolling();
+  }
+
+  /// Polling fallback for when Realtime is unavailable. Refreshes booking
+  /// stats every 15s so the active walk banner appears even if the
+  /// realtime channel never delivers events.
+  void _startStatsPolling() {
+    _statsPollTimer?.cancel();
+    _statsPollTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (mounted) _loadStats(silent: true);
+    });
   }
 
   void _loadBannerAd() {
-    final ad = AdService.instance.createBannerAd(
-      onLoaded: () {
-        if (mounted) setState(() => _isBannerAdLoaded = true);
-      },
-    );
-    if (ad != null) _bannerAd = ad;
+    if (mounted) setState(() => _isBannerAdLoaded = true);
+  }
+
+  void _subscribeToBookings() {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    _bookingsChannel = Supabase.instance.client
+        .channel('home_bookings')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'bookings',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'owner_id',
+            value: userId,
+          ),
+          callback: (payload) {
+            // Re-fetch stats when any booking status changes
+            _loadStats(silent: true);
+          },
+        )
+        .subscribe();
   }
 
   @override
   void dispose() {
-    _bannerAd?.dispose();
+    _statsPollTimer?.cancel();
+    _bookingsChannel?.unsubscribe();
     super.dispose();
   }
 
@@ -71,11 +110,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _loadStats() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _loadStats({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
 
     try {
       final userId = Supabase.instance.client.auth.currentUser?.id;
@@ -91,13 +132,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final bookings = await Supabase.instance.client
           .from('bookings')
-          .select('status')
+          .select('id, status')
           .eq('owner_id', userId);
 
       final list = bookings as List;
       int upcoming = 0;
       int active = 0;
       int completed = 0;
+      String? activeId;
 
       for (final b in list) {
         final status = b['status'] as String?;
@@ -108,6 +150,7 @@ class _HomeScreenState extends State<HomeScreen> {
             upcoming++;
           case 'walk_started':
             active++;
+            activeId ??= b['id'] as String?;
           case 'walk_completed':
             completed++;
         }
@@ -119,6 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _upcoming = upcoming;
           _active = active;
           _completed = completed;
+          _activeBookingId = activeId;
         });
       }
     } catch (e) {
@@ -212,44 +256,47 @@ class _HomeScreenState extends State<HomeScreen> {
             _buildTipCard(),
             const SizedBox(height: 20),
 
-            // Stats (live from Supabase)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : Row(
-                      children: [
-                        Expanded(
-                          child: StatCard(
-                              icon: '\u{1F4C5}',
-                              number: _upcoming,
-                              label: 'Upcoming',
-                              variant: 'blue'),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: StatCard(
-                              icon: '\u{1F550}',
-                              number: _active,
-                              label: 'Active',
-                              variant: 'green'),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: StatCard(
-                              icon: '\u{2705}',
-                              number: _completed,
-                              label: 'Completed',
-                              variant: 'gray'),
-                        ),
-                      ],
-                    ),
-            ),
+            // Stats (live from Supabase) — only for walkers
+            if (RoleService.instance.activeRole.value == ActiveRole.walker)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : Row(
+                        children: [
+                          Expanded(
+                            child: StatCard(
+                                icon: PhosphorIcons.calendarBlank(),
+                                number: _upcoming,
+                                label: 'Upcoming',
+                                variant: 'blue'),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: StatCard(
+                                icon: PhosphorIcons.clock(),
+                                number: _active,
+                                label: 'Active',
+                                variant: 'green'),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: StatCard(
+                                icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+                                number: _completed,
+                                label: 'Completed',
+                                variant: 'gray'),
+                          ),
+                        ],
+                      ),
+              ),
             const SizedBox(height: 20),
 
-            // Active Walk Banner
-            _buildActiveWalkBanner(context),
-            const SizedBox(height: 20),
+            // Active Walk Banner — only when there is an active walk
+            if (_active > 0) ...[
+              _buildActiveWalkBanner(context),
+              const SizedBox(height: 20),
+            ],
 
             // Find a Walker Banner
             _buildFindWalkerBanner(context),
@@ -271,7 +318,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   GestureDetector(
                     onTap: () {
-                      // Navigate to find tab (index 1)
+                      context.findAncestorStateOfType<MainShellState>()
+                          ?.switchOwnerTab(1);
                     },
                     child: Text(
                       'View all',
@@ -292,16 +340,10 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 20),
 
             // Banner Ad (free-tier only)
-            if (_isBannerAdLoaded && _bannerAd != null)
+            if (_isBannerAdLoaded)
               Padding(
                 padding: const EdgeInsets.only(bottom: 20),
-                child: Center(
-                  child: SizedBox(
-                    width: _bannerAd!.size.width.toDouble(),
-                    height: _bannerAd!.size.height.toDouble(),
-                    child: AdWidget(ad: _bannerAd!),
-                  ),
-                ),
+                child: _HomeBannerAd(key: _adKey),
               ),
 
             // Upcoming Walks
@@ -320,7 +362,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   GestureDetector(
                     onTap: () {
-                      // Navigate to bookings tab
+                      context.findAncestorStateOfType<MainShellState>()
+                          ?.switchOwnerTab(2);
                     },
                     child: Text(
                       'View all',
@@ -370,7 +413,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           child: Column(
             children: [
-              Icon(Icons.person_search,
+              Icon(PhosphorIcons.userFocus(),
                   size: 56, color: Colors.grey.withValues(alpha: 0.3)),
               const SizedBox(height: 14),
               Text(
@@ -388,7 +431,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return SizedBox(
-      height: 180,
+      height: 190,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -410,7 +453,7 @@ class _HomeScreenState extends State<HomeScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.error_outline,
+              PhosphorIcons.warningCircle(),
               size: 64,
               color: AppColors.textLight,
             ),
@@ -427,7 +470,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: _loadStats,
-              icon: const Icon(Icons.refresh),
+              icon: Icon(PhosphorIcons.arrowsClockwise()),
               label: const Text('Retry'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.orange500,
@@ -473,7 +516,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
+              child: Icon(PhosphorIcons.sparkle(), color: Colors.white, size: 20),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -491,7 +534,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       const SizedBox(width: 6),
-                      const Icon(Icons.favorite,
+                      Icon(PhosphorIcons.heart(PhosphorIconsStyle.fill),
                           color: AppColors.pink500, size: 12),
                     ],
                   ),
@@ -518,7 +561,8 @@ class _HomeScreenState extends State<HomeScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: GestureDetector(
-        onTap: () => Navigator.pushNamed(context, '/active-walk'),
+        onTap: () => Navigator.pushNamed(context, '/active-walk',
+            arguments: _activeBookingId),
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
@@ -538,6 +582,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           child: Stack(
             children: [
+              // Background ripple circle
               Positioned(
                 top: -30,
                 right: -30,
@@ -550,39 +595,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+              // Pulsing ripple effect behind LIVE badge
               Positioned(
-                top: 0,
-                right: 0,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'LIVE',
-                        style: GoogleFonts.nunito(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                right: 20,
+                top: 10,
+                child: _buildPulseRipple(),
               ),
               Row(
                 children: [
@@ -593,7 +610,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: Colors.white.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Icon(Icons.location_on,
+                    child: Icon(PhosphorIcons.mapPin(PhosphorIconsStyle.fill),
                         color: Colors.white, size: 28),
                   ),
                   const SizedBox(width: 16),
@@ -612,7 +629,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(height: 2),
                         Row(
                           children: [
-                            const Icon(Icons.access_time,
+                            Icon(PhosphorIcons.clock(),
                                 color: Colors.white70, size: 14),
                             const SizedBox(width: 6),
                             Text(
@@ -628,15 +645,46 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                   ),
+                  // LIVE badge with arrow
                   Container(
-                    width: 34,
-                    height: 34,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.18),
-                      shape: BoxShape.circle,
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.arrow_forward,
-                        color: Colors.white, size: 18),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                        )
+                            .animate(
+                                onPlay: (c) =>
+                                    c.repeat(reverse: true))
+                            .fade(
+                                begin: 1.0,
+                                end: 0.3,
+                                duration: 800.ms),
+                        const SizedBox(width: 6),
+                        Text(
+                          'LIVE',
+                          style: GoogleFonts.nunito(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(PhosphorIcons.arrowRight(),
+                            color: Colors.white, size: 14),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -647,12 +695,42 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Pulsing ripple rings behind the location icon.
+  Widget _buildPulseRipple() {
+    return SizedBox(
+      width: 54,
+      height: 54,
+      child: Stack(
+        alignment: Alignment.center,
+        children: List.generate(3, (i) {
+          return Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.25),
+                width: 2,
+              ),
+            ),
+          )
+              .animate(
+                  onPlay: (c) => c.repeat(),
+                  delay: (i * 600).ms)
+              .scaleXY(begin: 0.4, end: 1.6, duration: 1800.ms)
+              .fadeOut(begin: 0.6, duration: 1800.ms);
+        }),
+      ),
+    );
+  }
+
   Widget _buildFindWalkerBanner(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: GestureDetector(
         onTap: () {
-          // Navigate to find tab
+          context.findAncestorStateOfType<MainShellState>()
+              ?.switchOwnerTab(1);
         },
         child: Container(
           padding: const EdgeInsets.all(20),
@@ -694,8 +772,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: Colors.white.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Center(
-                      child: Text('\u{1F50D}', style: TextStyle(fontSize: 26)),
+                    child: Center(
+                      child: Icon(PhosphorIcons.magnifyingGlass(), color: Colors.white, size: 26),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -730,7 +808,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: Colors.white.withValues(alpha: 0.18),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.arrow_forward,
+                    child: Icon(PhosphorIcons.arrowRight(),
                         color: Colors.white, size: 18),
                   ),
                 ],
@@ -759,7 +837,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         child: Column(
           children: [
-            Icon(Icons.pets, size: 56, color: Colors.grey.withValues(alpha: 0.3)),
+            Icon(PhosphorIcons.pawPrint(), size: 56, color: Colors.grey.withValues(alpha: 0.3)),
             const SizedBox(height: 14),
             Text(
               'No upcoming walks',
@@ -827,13 +905,13 @@ class _WalkerCard extends StatelessWidget {
                       child: Image.network(
                         avatarUrl,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const Center(
-                          child: Icon(Icons.person, color: Colors.white, size: 28),
+                        errorBuilder: (_, __, ___) => Center(
+                          child: Icon(PhosphorIcons.user(), color: Colors.white, size: 28),
                         ),
                       ),
                     )
-                  : const Center(
-                      child: Icon(Icons.person, color: Colors.white, size: 28),
+                  : Center(
+                      child: Icon(PhosphorIcons.user(), color: Colors.white, size: 28),
                     ),
             ),
             const SizedBox(height: 10),
@@ -853,7 +931,7 @@ class _WalkerCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.star, size: 14, color: AppColors.orange500),
+                Icon(PhosphorIcons.star(PhosphorIconsStyle.fill), size: 14, color: AppColors.orange500),
                 const SizedBox(width: 4),
                 Text(
                   rating > 0 ? rating.toStringAsFixed(1) : 'New',
@@ -887,6 +965,48 @@ class _WalkerCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Self-contained banner ad widget that manages its own ad lifecycle.
+class _HomeBannerAd extends StatefulWidget {
+  const _HomeBannerAd({super.key});
+
+  @override
+  State<_HomeBannerAd> createState() => _HomeBannerAdState();
+}
+
+class _HomeBannerAdState extends State<_HomeBannerAd> {
+  BannerAd? _bannerAd;
+  bool _isLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final ad = AdService.instance.createBannerAd(
+      onLoaded: () {
+        if (mounted) setState(() => _isLoaded = true);
+      },
+    );
+    if (ad != null) _bannerAd = ad;
+  }
+
+  @override
+  void dispose() {
+    _bannerAd?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isLoaded || _bannerAd == null) return const SizedBox.shrink();
+    return Center(
+      child: SizedBox(
+        width: _bannerAd!.size.width.toDouble(),
+        height: _bannerAd!.size.height.toDouble(),
+        child: AdWidget(ad: _bannerAd!),
       ),
     );
   }

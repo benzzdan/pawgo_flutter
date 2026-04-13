@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -143,7 +144,7 @@ class _SignInScreenState extends State<SignInScreen> {
           backgroundColor: AppColors.textPrimary,
           textColor: AppColors.white,
           label: 'Continue with Apple',
-          icon: const Icon(Icons.apple, color: Colors.white, size: 24),
+          icon: Icon(PhosphorIcons.appleLogo(), color: Colors.white, size: 24),
         ),
         const SizedBox(height: 16),
         // Email Sign In
@@ -152,7 +153,7 @@ class _SignInScreenState extends State<SignInScreen> {
           backgroundColor: AppColors.orange500,
           textColor: AppColors.white,
           label: 'Continue with Email',
-          icon: const Icon(Icons.mail_outline, color: Colors.white, size: 24),
+          icon: Icon(PhosphorIcons.envelope(), color: Colors.white, size: 24),
           orangeShadow: true,
         ),
         const SizedBox(height: 16),
@@ -331,7 +332,7 @@ class _EmailLoginFormState extends State<_EmailLoginForm> {
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: AppColors.border),
                 ),
-                child: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+                child: Icon(PhosphorIcons.arrowLeft(), color: AppColors.textPrimary),
               ),
             ),
             const SizedBox(width: 12),
@@ -361,7 +362,7 @@ class _EmailLoginFormState extends State<_EmailLoginForm> {
           suffixIcon: GestureDetector(
             onTap: () => setState(() => _obscurePassword = !_obscurePassword),
             child: Icon(
-              _obscurePassword ? Icons.visibility_off : Icons.visibility,
+              _obscurePassword ? PhosphorIcons.eyeSlash() : PhosphorIcons.eye(),
               color: AppColors.textTertiary,
             ),
           ),
@@ -488,7 +489,7 @@ class _PhoneLoginFormState extends State<_PhoneLoginForm> {
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: AppColors.border),
                 ),
-                child: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+                child: Icon(PhosphorIcons.arrowLeft(), color: AppColors.textPrimary),
               ),
             ),
             const SizedBox(width: 12),

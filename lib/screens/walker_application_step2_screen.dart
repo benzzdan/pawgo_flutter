@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class WalkerApplicationStep2Screen extends StatefulWidget {
   const WalkerApplicationStep2Screen({super.key});
@@ -283,7 +284,7 @@ class _WalkerApplicationStep2ScreenState
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.arrow_back,
+              child: Icon(PhosphorIcons.arrowLeft(),
                   size: 20, color: AppColors.textPrimary),
             ),
           ),
@@ -390,10 +391,10 @@ class _WalkerApplicationStep2ScreenState
             fontWeight: FontWeight.w600,
             color: AppColors.textPrimary,
           ),
-          icon: const Icon(Icons.keyboard_arrow_down,
+          icon: Icon(PhosphorIcons.caretDown(),
               color: AppColors.warmCaramel),
           decoration: InputDecoration(
-            prefixIcon: const Icon(Icons.trending_up,
+            prefixIcon: Icon(PhosphorIcons.trendUp(),
                 size: 20, color: AppColors.warmCaramel),
             filled: true,
             fillColor: AppColors.white,
@@ -462,7 +463,7 @@ class _WalkerApplicationStep2ScreenState
               fontWeight: FontWeight.w600,
               color: AppColors.textTertiary,
             ),
-            prefixIcon: const Icon(Icons.calendar_today,
+            prefixIcon: Icon(PhosphorIcons.calendarBlank(),
                 size: 20, color: AppColors.warmCaramel),
             filled: true,
             fillColor: AppColors.white,
@@ -581,7 +582,7 @@ class _WalkerApplicationStep2ScreenState
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child:
-                    const Icon(Icons.add, color: AppColors.white, size: 24),
+                    Icon(PhosphorIcons.plus(PhosphorIconsStyle.bold), color: AppColors.white, size: 24),
               ),
             ),
           ],
@@ -612,9 +613,9 @@ class _WalkerApplicationStep2ScreenState
           mainAxisSize: MainAxisSize.min,
           children: [
             if (isSelected)
-              const Padding(
-                padding: EdgeInsets.only(right: 6),
-                child: Icon(Icons.check_circle,
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
                     size: 16, color: AppColors.warmCaramel),
               ),
             Text(
@@ -736,7 +737,7 @@ class _WalkerApplicationStep2ScreenState
                     fontWeight: FontWeight.w600,
                     color: AppColors.textTertiary,
                   ),
-                  prefixIcon: const Icon(Icons.location_on,
+                  prefixIcon: Icon(PhosphorIcons.mapPin(PhosphorIconsStyle.fill),
                       size: 20, color: AppColors.warmCaramel),
                   filled: true,
                   fillColor: AppColors.white,
@@ -772,7 +773,7 @@ class _WalkerApplicationStep2ScreenState
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child:
-                    const Icon(Icons.add, color: AppColors.white, size: 24),
+                    Icon(PhosphorIcons.plus(PhosphorIconsStyle.bold), color: AppColors.white, size: 24),
               ),
             ),
           ],
@@ -795,7 +796,7 @@ class _WalkerApplicationStep2ScreenState
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.location_on,
+                    Icon(PhosphorIcons.mapPin(PhosphorIconsStyle.fill),
                         size: 14, color: AppColors.warmCaramel),
                     const SizedBox(width: 4),
                     Text(
@@ -810,7 +811,7 @@ class _WalkerApplicationStep2ScreenState
                     GestureDetector(
                       onTap: () =>
                           setState(() => _zipCodes.remove(code)),
-                      child: const Icon(Icons.close,
+                      child: Icon(PhosphorIcons.x(),
                           size: 16, color: AppColors.warmCaramel),
                     ),
                   ],

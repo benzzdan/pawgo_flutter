@@ -6,6 +6,7 @@ import 'package:pawgo/services/ad_service.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class ReviewScreen extends StatefulWidget {
   const ReviewScreen({super.key});
@@ -144,7 +145,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
         backgroundColor: AppColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.close, color: AppColors.textPrimary),
+          icon: Icon(PhosphorIcons.x(), color: AppColors.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -174,7 +175,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 color: AppColors.green50,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(Icons.check_circle, size: 48, color: AppColors.green600),
+              child: Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 48, color: AppColors.green600),
             ),
             const SizedBox(height: 24),
             Text(
@@ -217,8 +218,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
               ),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: const Center(
-              child: Icon(Icons.person, size: 40, color: Colors.white),
+            child: Center(
+              child: Icon(PhosphorIcons.user(), size: 40, color: Colors.white),
             ),
           ),
           const SizedBox(height: 16),
@@ -250,7 +251,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: Icon(
-                    starNum <= _rating ? Icons.star_rounded : Icons.star_outline_rounded,
+                    starNum <= _rating ? PhosphorIcons.star(PhosphorIconsStyle.fill) : PhosphorIcons.star(),
                     size: 48,
                     color: starNum <= _rating ? AppColors.amber500 : AppColors.gray300,
                   ),
