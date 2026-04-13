@@ -7,6 +7,7 @@ class Env {
   final String revenueCatApiKey;
   final String posthogApiKey;
   final String posthogHost;
+  final String mapboxAccessToken;
 
   const Env._({
     required this.supabaseUrl,
@@ -14,6 +15,7 @@ class Env {
     required this.revenueCatApiKey,
     required this.posthogApiKey,
     required this.posthogHost,
+    required this.mapboxAccessToken,
   });
 
   /// Local Docker Compose Supabase stack.
@@ -24,6 +26,8 @@ class Env {
     revenueCatApiKey: 'appl_LOCAL_DEV_KEY',
     posthogApiKey: 'phc_LOCAL_DEV_KEY',
     posthogHost: 'https://us.i.posthog.com',
+    mapboxAccessToken:
+        'YOUR_MAPBOX_ACCESS_TOKEN',
   );
 
   /// Production Supabase project (update before deploying).
@@ -33,6 +37,7 @@ class Env {
     revenueCatApiKey: 'YOUR_REVENUECAT_API_KEY',
     posthogApiKey: 'YOUR_POSTHOG_API_KEY',
     posthogHost: 'https://us.i.posthog.com',
+    mapboxAccessToken: 'YOUR_MAPBOX_ACCESS_TOKEN',
   );
 
   /// Active environment — change this to switch targets.

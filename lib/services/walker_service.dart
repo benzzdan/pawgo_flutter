@@ -12,8 +12,26 @@ class WalkerService {
   }
 
   /// Fetch all enabled walkers with their user profile info.
-  static Future<List<Walker>> fetchWalkers() async {
+  ///
+  /// When [latitude] and [longitude] are provided, walkers are sorted
+  /// by proximity using the PostGIS-backed `nearby_walkers` RPC function.
+  /// Otherwise falls back to default avg_rating sort.
+  static Future<List<Walker>> fetchWalkers({
+    double? latitude,
+    double? longitude,
+  }) async {
     try {
+      if (latitude != null && longitude != null) {
+        _log('fetchWalkers: proximity search lat=$latitude lng=$longitude');
+        final data = await _supabase.rpc('nearby_walkers', params: {
+          'search_lat': latitude,
+          'search_lng': longitude,
+        });
+        final walkers = (data as List).map((e) => Walker.fromRpc(e)).toList();
+        _log('fetchWalkers: got ${walkers.length} walkers (proximity)');
+        return walkers;
+      }
+
       _log('fetchWalkers: fetching enabled walkers');
       final data = await _supabase
           .from('walkers')

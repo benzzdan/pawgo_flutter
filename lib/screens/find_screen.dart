@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:pawgo/config/env.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/models/mock_data.dart';
 import 'package:pawgo/services/walker_service.dart';
+import 'package:pawgo/services/geocoding_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -18,10 +22,31 @@ class _FindScreenState extends State<FindScreen> {
   bool _isLoading = true;
   String? _error;
 
+  // Search state
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  List<GeocodingSuggestion> _suggestions = [];
+  bool _showSuggestions = false;
+  GeocodingSuggestion? _selectedLocation;
+  Timer? _debounceTimer;
+
+  late final GeocodingService _geocodingService;
+
   @override
   void initState() {
     super.initState();
+    _geocodingService = GeocodingService(
+      accessToken: Env.current.mapboxAccessToken,
+    );
     _loadWalkers();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    _debounceTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadWalkers() async {
@@ -30,7 +55,10 @@ class _FindScreenState extends State<FindScreen> {
       _error = null;
     });
     try {
-      final walkers = await WalkerService.fetchWalkers();
+      final walkers = await WalkerService.fetchWalkers(
+        latitude: _selectedLocation?.latitude,
+        longitude: _selectedLocation?.longitude,
+      );
       if (mounted) {
         setState(() {
           _walkers = walkers;
@@ -47,6 +75,47 @@ class _FindScreenState extends State<FindScreen> {
     }
   }
 
+  void _onSearchChanged(String query) {
+    _debounceTimer?.cancel();
+    if (query.trim().isEmpty) {
+      setState(() {
+        _suggestions = [];
+        _showSuggestions = false;
+      });
+      return;
+    }
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () async {
+      final results = await _geocodingService.autocomplete(query);
+      if (mounted) {
+        setState(() {
+          _suggestions = results;
+          _showSuggestions = results.isNotEmpty;
+        });
+      }
+    });
+  }
+
+  void _onSuggestionSelected(GeocodingSuggestion suggestion) {
+    setState(() {
+      _selectedLocation = suggestion;
+      _searchController.text = suggestion.placeName;
+      _suggestions = [];
+      _showSuggestions = false;
+    });
+    _searchFocusNode.unfocus();
+    _loadWalkers();
+  }
+
+  void _clearSearch() {
+    setState(() {
+      _searchController.clear();
+      _selectedLocation = null;
+      _suggestions = [];
+      _showSuggestions = false;
+    });
+    _loadWalkers();
+  }
+
   List<Walker> get _filteredWalkers {
     return _walkers.where((w) {
       if (_selectedFilter == 'available') return w.isEnabled;
@@ -61,7 +130,6 @@ class _FindScreenState extends State<FindScreen> {
       children: [
         // Search Header
         Container(
-          color: AppColors.white,
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -94,7 +162,8 @@ class _FindScreenState extends State<FindScreen> {
               Container(
                 height: 52,
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: Theme.of(context).inputDecorationTheme.fillColor ??
+                      AppColors.surface,
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Row(
@@ -104,15 +173,37 @@ class _FindScreenState extends State<FindScreen> {
                         size: 20, color: AppColors.textSecondary),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: Text(
-                        '123 Main St, New York, NY',
+                      child: TextField(
+                        controller: _searchController,
+                        focusNode: _searchFocusNode,
+                        onChanged: _onSearchChanged,
                         style: GoogleFonts.nunito(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                           color: AppColors.textPrimary,
                         ),
+                        decoration: InputDecoration(
+                          hintText: 'Search by address or zip code',
+                          hintStyle: GoogleFonts.nunito(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary,
+                          ),
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
                       ),
                     ),
+                    if (_searchController.text.isNotEmpty)
+                      GestureDetector(
+                        onTap: _clearSearch,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Icon(PhosphorIcons.x(),
+                              size: 18, color: AppColors.textSecondary),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -153,11 +244,52 @@ class _FindScreenState extends State<FindScreen> {
             ],
           ),
         ),
+        // Autocomplete suggestions overlay
+        if (_showSuggestions)
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 24),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardTheme.color ?? AppColors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: AppShadows.card,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: _suggestions.map((suggestion) {
+                return InkWell(
+                  onTap: () => _onSuggestionSelected(suggestion),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    child: Row(
+                      children: [
+                        Icon(PhosphorIcons.mapPin(),
+                            size: 16, color: AppColors.textSecondary),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            suggestion.placeName,
+                            style: GoogleFonts.nunito(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
         // Results Count
         if (!_isLoading && _error == null)
           Container(
             width: double.infinity,
-            color: AppColors.background,
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             child: Text(
               '${_filteredWalkers.length} walker${_filteredWalkers.length != 1 ? 's' : ''} nearby',
@@ -188,7 +320,8 @@ class _FindScreenState extends State<FindScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(PhosphorIcons.wifiSlash(), size: 48, color: AppColors.gray400),
+              Icon(PhosphorIcons.wifiSlash(),
+                  size: 48, color: AppColors.gray400),
               const SizedBox(height: 16),
               Text(
                 _error!,
@@ -317,7 +450,7 @@ class _WalkerCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.white,
+          color: Theme.of(context).cardTheme.color ?? AppColors.white,
           borderRadius: BorderRadius.circular(AppRadius.card),
           boxShadow: AppShadows.card,
         ),
@@ -349,14 +482,14 @@ class _WalkerCard extends StatelessWidget {
                                 walker.avatarUrl!,
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, __, ___) => const Center(
-                                  child: Text('🚶',
+                                  child: Text('\u{1F6B6}',
                                       style: TextStyle(fontSize: 30)),
                                 ),
                               ),
                             )
                           : const Center(
-                              child:
-                                  Text('🚶', style: TextStyle(fontSize: 30)),
+                              child: Text('\u{1F6B6}',
+                                  style: TextStyle(fontSize: 30)),
                             ),
                     ),
                     if (walker.backgroundChecked)
@@ -371,8 +504,10 @@ class _WalkerCard extends StatelessWidget {
                             shape: BoxShape.circle,
                             border: Border.all(color: Colors.white, width: 2),
                           ),
-                          child: Icon(PhosphorIcons.shield(PhosphorIconsStyle.fill),
-                              color: Colors.white, size: 12),
+                          child: Icon(
+                              PhosphorIcons.shield(PhosphorIconsStyle.fill),
+                              color: Colors.white,
+                              size: 12),
                         ),
                       ),
                   ],
@@ -408,8 +543,11 @@ class _WalkerCard extends StatelessWidget {
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(PhosphorIcons.shield(PhosphorIconsStyle.fill),
-                                      size: 10, color: AppColors.green600),
+                                  Icon(
+                                      PhosphorIcons.shield(
+                                          PhosphorIconsStyle.fill),
+                                      size: 10,
+                                      color: AppColors.green600),
                                   const SizedBox(width: 4),
                                   Text(
                                     'Verified',
@@ -496,7 +634,7 @@ class _WalkerCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Center(
-                      child: Text('🚶', style: TextStyle(fontSize: 14)),
+                      child: Text('\u{1F6B6}', style: TextStyle(fontSize: 14)),
                     ),
                   ),
                   const SizedBox(width: 6),
@@ -525,7 +663,7 @@ class _WalkerCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Center(
-                      child: Text('⚡', style: TextStyle(fontSize: 14)),
+                      child: Text('\u{26A1}', style: TextStyle(fontSize: 14)),
                     ),
                   ),
                   const SizedBox(width: 6),
