@@ -29,7 +29,7 @@ class ActiveWalkScreen extends StatefulWidget {
 }
 
 class _ActiveWalkScreenState extends State<ActiveWalkScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   // Map state
   GoogleMapController? _mapController;
   final List<LatLng> _routePoints = [];
@@ -90,9 +90,16 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
   bool _isLoading = true;
   String? _error;
 
+  // Owner monitoring presence (US-015)
+  final OwnerHeartbeatManager _heartbeatManager = OwnerHeartbeatManager();
+  final WalkerPresencePoller _presencePoller = WalkerPresencePoller();
+  OwnerPresenceState _ownerPresenceState = OwnerPresenceState.notWatching;
+  String? _walkerUserId; // walker's auth user_id for notification target
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -104,6 +111,18 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     _trackingService = widget.trackingService ?? TrackingService();
     _bookingStatusService =
         widget.bookingStatusService ?? BookingStatusService();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (_isWalker) return; // Only owner manages heartbeat
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      _heartbeatManager.pause();
+    } else if (state == AppLifecycleState.resumed) {
+      _heartbeatManager.resume(onHeartbeat: _sendOwnerHeartbeat);
+    }
   }
 
   @override
@@ -213,6 +232,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
     _elapsedTimer?.cancel();
     _gpsTimeoutTimer?.cancel();
@@ -225,6 +245,13 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     _bookingStatusSub?.cancel();
     _trackingService.dispose();
     _bookingStatusService.dispose();
+    // US-015: Clean up presence timers
+    _heartbeatManager.dispose();
+    _presencePoller.dispose();
+    // Owner clears their presence on screen exit
+    if (!_isWalker) {
+      _clearOwnerPresence();
+    }
     // Note: GPS broadcast is NOT stopped here intentionally.
     // The service is a singleton that continues in the background
     // so GPS keeps broadcasting even if the user navigates away.
@@ -273,8 +300,20 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
         _subscribeToBookingStatus();
       }
 
-      // If the current user is the walker and walk is active, start GPS broadcast
+      // US-015: Owner monitoring presence
+      _walkerUserId = walkerUserId;
       final status = data['status'] as String?;
+      if (status == 'walk_started') {
+        if (!isWalker) {
+          // Owner side: start heartbeat so walker knows we're watching
+          _startOwnerHeartbeat();
+        } else {
+          // Walker side: start polling owner_last_seen_at
+          _startWalkerPresencePolling();
+        }
+      }
+
+      // If the current user is the walker and walk is active, start GPS broadcast
       if (isWalker && status == 'walk_started') {
         _startGpsBroadcast();
       }
@@ -336,6 +375,88 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
       if (!mounted) return;
       setState(() => _elapsedMinutes++);
     });
+  }
+
+  // ── US-015: Owner monitoring presence heartbeat ──
+
+  /// Writes `owner_last_seen_at = NOW()` on the booking row.
+  /// Called immediately and then every 30 s by [OwnerHeartbeatManager].
+  Future<void> _sendOwnerHeartbeat() async {
+    if (_bookingId == null) return;
+    try {
+      await Supabase.instance.client
+          .from('bookings')
+          .update({'owner_last_seen_at': DateTime.now().toUtc().toIso8601String()})
+          .eq('id', _bookingId!);
+    } catch (e) {
+      debugPrint('Owner heartbeat failed: $e');
+    }
+  }
+
+  /// Starts the owner heartbeat timer and sends the first notification
+  /// to the walker (once per session).
+  void _startOwnerHeartbeat() {
+    _heartbeatManager.startHeartbeat(onHeartbeat: _sendOwnerHeartbeat);
+    _notifyWalkerOfOwnerMonitoring();
+  }
+
+  /// Starts the walker-side polling timer that reads `owner_last_seen_at`.
+  void _startWalkerPresencePolling() {
+    _presencePoller.startPolling(onPoll: _pollOwnerPresence);
+  }
+
+  /// Reads `owner_last_seen_at` from the booking and updates
+  /// [_ownerPresenceState] so the indicator reflects the latest value.
+  Future<void> _pollOwnerPresence() async {
+    if (_bookingId == null) return;
+    try {
+      final data = await Supabase.instance.client
+          .from('bookings')
+          .select('owner_last_seen_at')
+          .eq('id', _bookingId!)
+          .single();
+      if (!mounted) return;
+      final raw = data['owner_last_seen_at'] as String?;
+      final lastSeen = raw != null ? DateTime.parse(raw) : null;
+      setState(() {
+        _ownerPresenceState = OwnerPresenceState.fromLastSeen(lastSeen);
+      });
+    } catch (e) {
+      debugPrint('Owner presence poll failed: $e');
+    }
+  }
+
+  /// Sends a push notification to the walker the first time the owner
+  /// opens the Active Walk screen in this session.
+  Future<void> _notifyWalkerOfOwnerMonitoring() async {
+    if (_heartbeatManager.hasNotifiedWalker) return;
+    if (_walkerUserId == null || _bookingId == null) return;
+    _heartbeatManager.markNotified();
+    try {
+      await Supabase.instance.client.functions.invoke(
+        'send-notification',
+        body: {
+          'type': 'owner_monitoring',
+          'user_id': _walkerUserId,
+          'booking_id': _bookingId,
+        },
+      );
+    } catch (e) {
+      debugPrint('Owner monitoring notification failed: $e');
+    }
+  }
+
+  /// Clears `owner_last_seen_at` on the booking when the owner leaves.
+  Future<void> _clearOwnerPresence() async {
+    if (_bookingId == null) return;
+    try {
+      await Supabase.instance.client
+          .from('bookings')
+          .update({'owner_last_seen_at': null})
+          .eq('id', _bookingId!);
+    } catch (e) {
+      debugPrint('Clear owner presence failed: $e');
+    }
   }
 
   Future<void> _loadExistingLocations() async {
@@ -538,7 +659,14 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                               const SizedBox(height: 16),
                               _buildStatsGrid(),
                               if (_isWalker) ...[
-                                const SizedBox(height: 16),
+                                const SizedBox(height: AppSpacing.sm),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                                  child: OwnerPresenceIndicator(
+                                    presenceState: _ownerPresenceState,
+                                  ),
+                                ),
+                                const SizedBox(height: AppSpacing.md),
                                 _buildEndWalkButton(),
                               ],
                               const SizedBox(height: 16),
@@ -1505,6 +1633,130 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
           ),
         ),
       ],
+    );
+  }
+}
+
+// --- Owner monitoring presence types (exported for testing) ---
+
+/// Whether the owner is currently watching the walk.
+enum OwnerPresenceState {
+  watching,
+  notWatching;
+
+  /// Determines presence state from [lastSeen] timestamp.
+  /// Owner is "watching" if last seen within 60 seconds of [now].
+  static OwnerPresenceState fromLastSeen(DateTime? lastSeen, {DateTime? now}) {
+    if (lastSeen == null) return notWatching;
+    final reference = now ?? DateTime.now().toUtc();
+    final diff = reference.difference(lastSeen).inSeconds;
+    return diff <= 60 ? watching : notWatching;
+  }
+}
+
+/// Manages the owner-side heartbeat timer that updates owner_last_seen_at.
+/// Extracted for testability.
+class OwnerHeartbeatManager {
+  Timer? _heartbeatTimer;
+  bool _hasNotifiedWalker = false;
+
+  bool get hasNotifiedWalker => _hasNotifiedWalker;
+
+  void markNotified() => _hasNotifiedWalker = true;
+
+  void reset() {
+    _hasNotifiedWalker = false;
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+
+  /// Starts the heartbeat. Fires [onHeartbeat] immediately, then every 30s.
+  void startHeartbeat({required VoidCallback onHeartbeat}) {
+    _heartbeatTimer?.cancel();
+    // Immediate first heartbeat
+    onHeartbeat();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      onHeartbeat();
+    });
+  }
+
+  /// Pauses the heartbeat timer (e.g. app backgrounded).
+  void pause() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+
+  /// Resumes the heartbeat. Fires [onHeartbeat] immediately, then every 30s.
+  void resume({required VoidCallback onHeartbeat}) {
+    startHeartbeat(onHeartbeat: onHeartbeat);
+  }
+
+  void dispose() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+}
+
+/// Manages the walker-side polling timer that checks owner_last_seen_at.
+class WalkerPresencePoller {
+  Timer? _pollTimer;
+
+  /// Starts polling. Fires [onPoll] immediately, then every 15s.
+  void startPolling({required VoidCallback onPoll}) {
+    _pollTimer?.cancel();
+    onPoll();
+    _pollTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      onPoll();
+    });
+  }
+
+  void dispose() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+}
+
+/// Visual indicator showing whether the owner is watching the walk.
+/// Used in the walker's active walk view.
+class OwnerPresenceIndicator extends StatelessWidget {
+  const OwnerPresenceIndicator({
+    super.key,
+    required this.presenceState,
+  });
+
+  final OwnerPresenceState presenceState;
+
+  @override
+  Widget build(BuildContext context) {
+    final isWatching = presenceState == OwnerPresenceState.watching;
+    final text = isWatching ? 'Owner is watching' : 'Owner is not watching';
+    final dotColor = isWatching ? AppColors.green500 : AppColors.textTertiary;
+    final textColor = isWatching ? AppColors.green600 : AppColors.textTertiary;
+
+    return Semantics(
+      label: text,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: dotColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          Text(
+            text,
+            style: GoogleFonts.nunito(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: textColor,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
