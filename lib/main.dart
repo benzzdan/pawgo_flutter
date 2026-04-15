@@ -127,6 +127,8 @@ void _handleNotificationTap(NotificationNavigation nav) {
   );
 }
 
+/// Shows [ReviewBottomSheet] using the global navigator key.
+/// Precondition: [ErrorHandler.instance.navigatorKey] must be mounted (non-null currentContext).
 void _showReviewSheetFromNav(NotificationNavigation nav) {
   final context = ErrorHandler.instance.navigatorKey.currentContext;
   if (context == null) return;
@@ -149,6 +151,7 @@ void _showReviewSheetFromNav(NotificationNavigation nav) {
       walkerName: args['walker_name'] as String? ?? 'your walker',
     ),
   ).then((_) {
+    // Always navigate to past bookings after the review prompt dismisses (submit or skip).
     BookingsScreen.pendingInitialTab = 'past';
     ErrorHandler.instance.navigatorKey.currentState?.pushNamedAndRemoveUntil(
       '/home',
@@ -306,7 +309,7 @@ class _AuthGateState extends State<_AuthGate> {
     try {
       final supabase = Supabase.instance.client;
       final userId = supabase.auth.currentUser?.id;
-      if (userId == null) return;
+      if (userId == null) return; // covers both "never logged in" and "signed out during startup delay"
 
       final data = await supabase
           .from('bookings')
@@ -316,14 +319,14 @@ class _AuthGateState extends State<_AuthGate> {
           .order('updated_at', ascending: false)
           .limit(5);
 
-      for (final booking in (data as List)) {
+      for (final booking in (data as List<dynamic>)) {
         final bookingId = booking['id'] as String;
         final reviews = await supabase
             .from('reviews')
             .select('id')
             .eq('booking_id', bookingId)
             .limit(1);
-        if ((reviews as List).isEmpty) {
+        if ((reviews as List<dynamic>).isEmpty) {
           final walkerData = booking['walkers'] as Map<String, dynamic>?;
           final userMap = walkerData?['users'] as Map<String, dynamic>?;
           final walkerId = booking['walker_id'] as String;
