@@ -152,7 +152,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
           );
 
           if (!mounted) return;
-          BookingsScreen.pendingInitialTab = 'past';
+          setState(() => _selectedTab = 'past');
           break;
         }
       }
