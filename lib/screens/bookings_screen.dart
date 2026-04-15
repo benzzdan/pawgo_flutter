@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/booking_status_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/review_bottom_sheet.dart';
 
 class BookingsScreen extends StatefulWidget {
   const BookingsScreen({super.key, this.bookingStatusService});
@@ -47,7 +48,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
       BookingsScreen.pendingInitialTab = null;
     }
     _statusService = widget.bookingStatusService ?? BookingStatusService();
-    _fetchBookings();
+    _fetchBookings().then((_) => _checkPendingReview());
     _subscribeToUpdates();
     _subscribeToStatusService();
   }
@@ -98,6 +99,63 @@ class _BookingsScreenState extends State<BookingsScreen> {
         _error = appError.message;
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _checkPendingReview() async {
+    if (ReviewBottomSheet.shownThisSession) return;
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      // Fetch up to 5 most-recently-updated completed bookings for this owner
+      final data = await withRetry(() => _supabase
+          .from('bookings')
+          .select('id, walker_id, walkers!bookings_walker_id_fkey(users(full_name))')
+          .eq('owner_id', userId)
+          .eq('status', 'walk_completed')
+          .order('updated_at', ascending: false)
+          .limit(5));
+
+      for (final booking in (data as List)) {
+        final bookingId = booking['id'] as String;
+
+        // Check if a review already exists for this booking
+        final reviews = await withRetry(() => _supabase
+            .from('reviews')
+            .select('id')
+            .eq('booking_id', bookingId)
+            .limit(1));
+
+        if ((reviews as List).isEmpty) {
+          final walkerData = booking['walkers'] as Map<String, dynamic>?;
+          final userMap = walkerData?['users'] as Map<String, dynamic>?;
+          final walkerId = booking['walker_id'] as String;
+          final walkerName = userMap?['full_name'] as String? ?? 'your walker';
+
+          if (!mounted) return;
+          ReviewBottomSheet.shownThisSession = true;
+
+          await showModalBottomSheet<void>(
+            context: context,
+            isScrollControlled: true,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            builder: (_) => ReviewBottomSheet(
+              bookingId: bookingId,
+              walkerId: walkerId,
+              walkerName: walkerName,
+            ),
+          );
+
+          if (!mounted) return;
+          BookingsScreen.pendingInitialTab = 'past';
+          break;
+        }
+      }
+    } catch (_) {
+      // Non-critical: silently ignore errors in the review check
     }
   }
 

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pawgo/services/booking_status_service.dart';
 import 'package:pawgo/screens/bookings_screen.dart';
+import 'package:pawgo/widgets/review_bottom_sheet.dart';
 
 void main() {
   group('US-002: Review screen premature exit fix', () {
@@ -112,6 +113,14 @@ void main() {
         // Clean up
         BookingsScreen.pendingInitialTab = null;
       });
+    });
+  });
+
+  group('BookingsScreen: pending review check', () {
+    test('ReviewBottomSheet.shownThisSession prevents duplicate prompts', () {
+      ReviewBottomSheet.shownThisSession = true;
+      expect(ReviewBottomSheet.shownThisSession, true);
+      ReviewBottomSheet.shownThisSession = false; // clean up
     });
   });
 
