@@ -299,5 +299,15 @@ void main() {
       expect(nav.arguments?['walker_id'], 'w-456');
       expect(nav.arguments?['walker_name'], 'Carlos M.');
     });
+
+    test('uses fallback walker name when walkerName is null', () {
+      final nav = NotificationRouter.routeFor(
+        type: 'review_prompt',
+        bookingId: 'b-123',
+        walkerId: 'w-456',
+        walkerName: null,
+      );
+      expect(nav!.arguments?['walker_name'], 'your walker');
+    });
   });
 }

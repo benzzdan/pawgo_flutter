@@ -51,7 +51,9 @@ class NotificationData {
   factory NotificationData.fromMap(Map<String, dynamic> map) {
     final rawIds = map['suggested_walker_ids'];
     List<String>? walkerIds;
-    if (rawIds is List) {
+    if (rawIds is String && rawIds.isNotEmpty) {
+      walkerIds = rawIds.split(',');
+    } else if (rawIds is List) {
       walkerIds = rawIds.cast<String>();
     }
     return NotificationData(
@@ -118,6 +120,9 @@ class NotificationRouter {
       case 'walk_completed':
         return const NotificationNavigation(route: '/home', tab: 'past');
       case 'review_prompt':
+        // 'review_sheet' is a sentinel — not a named route.
+        // main.dart's _handleNotificationTap intercepts it and shows
+        // ReviewBottomSheet via showModalBottomSheet.
         return NotificationNavigation(
           route: 'review_sheet',
           arguments: {
