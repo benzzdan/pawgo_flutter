@@ -108,10 +108,14 @@ Future<void> main() async {
 
 /// Handles notification tap deep-linking via the global navigator key.
 void _handleNotificationTap(NotificationNavigation nav) {
+  if (nav.route == 'review_sheet') {
+    _showReviewSheetFromNav(nav);
+    return;
+  }
+
   final navigator = ErrorHandler.instance.navigatorKey.currentState;
   if (navigator == null) return;
 
-  // Set pending tab for bookings-related routes
   if (nav.tab != null) {
     BookingsScreen.pendingInitialTab = nav.tab;
   }
@@ -121,6 +125,37 @@ void _handleNotificationTap(NotificationNavigation nav) {
     (route) => route.settings.name == '/home' || route.isFirst,
     arguments: nav.arguments,
   );
+}
+
+void _showReviewSheetFromNav(NotificationNavigation nav) {
+  final context = ErrorHandler.instance.navigatorKey.currentContext;
+  if (context == null) return;
+  final args = nav.arguments;
+  if (args == null) return;
+  final bookingId = args['booking_id'] as String?;
+  final walkerId = args['walker_id'] as String?;
+  if (bookingId == null || walkerId == null) return;
+
+  ReviewBottomSheet.shownThisSession = true;
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (_) => ReviewBottomSheet(
+      bookingId: bookingId,
+      walkerId: walkerId,
+      walkerName: args['walker_name'] as String? ?? 'your walker',
+    ),
+  ).then((_) {
+    BookingsScreen.pendingInitialTab = 'past';
+    ErrorHandler.instance.navigatorKey.currentState?.pushNamedAndRemoveUntil(
+      '/home',
+      (route) => false,
+      arguments: {'tab': 2},
+    );
+  });
 }
 
 class PawgoApp extends StatelessWidget {
@@ -242,6 +277,8 @@ class _AuthGateState extends State<_AuthGate> {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             Navigator.pushReplacementNamed(context, '/home');
+            // After navigation settles, check for an unreviewed completed walk.
+            Future.delayed(const Duration(milliseconds: 500), _checkPendingReviewOnStartup);
           }
         });
         // Resume GPS broadcast if walker has an active walk
@@ -262,6 +299,49 @@ class _AuthGateState extends State<_AuthGate> {
         });
       }
     });
+  }
+
+  Future<void> _checkPendingReviewOnStartup() async {
+    if (ReviewBottomSheet.shownThisSession) return;
+    try {
+      final supabase = Supabase.instance.client;
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      final data = await supabase
+          .from('bookings')
+          .select('id, walker_id, walkers!bookings_walker_id_fkey(users(full_name))')
+          .eq('owner_id', userId)
+          .eq('status', 'walk_completed')
+          .order('updated_at', ascending: false)
+          .limit(5);
+
+      for (final booking in (data as List)) {
+        final bookingId = booking['id'] as String;
+        final reviews = await supabase
+            .from('reviews')
+            .select('id')
+            .eq('booking_id', bookingId)
+            .limit(1);
+        if ((reviews as List).isEmpty) {
+          final walkerData = booking['walkers'] as Map<String, dynamic>?;
+          final userMap = walkerData?['users'] as Map<String, dynamic>?;
+          final walkerId = booking['walker_id'] as String;
+          final walkerName = userMap?['full_name'] as String? ?? 'your walker';
+          _showReviewSheetFromNav(NotificationNavigation(
+            route: 'review_sheet',
+            arguments: {
+              'booking_id': bookingId,
+              'walker_id': walkerId,
+              'walker_name': walkerName,
+            },
+          ));
+          break;
+        }
+      }
+    } catch (_) {
+      // Non-critical: silently ignore
+    }
   }
 
   @override
