@@ -12,6 +12,9 @@ class NotificationData {
   final String? type;
   final String? bookingId;
   final List<String>? suggestedWalkerIds;
+  final String? walkerId;
+  final String? walkerName;
+  final bool reviewPrompt;
 
   const NotificationData({
     this.title,
@@ -19,6 +22,9 @@ class NotificationData {
     this.type,
     this.bookingId,
     this.suggestedWalkerIds,
+    this.walkerId,
+    this.walkerName,
+    this.reviewPrompt = false,
   });
 
   factory NotificationData.fromRemoteMessage(RemoteMessage message) {
@@ -29,28 +35,20 @@ class NotificationData {
     } else if (rawIds is List) {
       walkerIds = rawIds.cast<String>();
     }
-
     return NotificationData(
       title: message.notification?.title,
       body: message.notification?.body,
       type: message.data['type'] as String?,
       bookingId: message.data['booking_id'] as String?,
       suggestedWalkerIds: walkerIds,
+      walkerId: message.data['walker_id'] as String?,
+      walkerName: message.data['walker_name'] as String?,
+      reviewPrompt: message.data['review_prompt'] == 'true',
     );
   }
 
-  /// Encode type, bookingId, and suggestedWalkerIds as a JSON string for
-  /// local notification payload.
-  String toPayload() => jsonEncode({
-        'type': type,
-        'booking_id': bookingId,
-        if (suggestedWalkerIds != null)
-          'suggested_walker_ids': suggestedWalkerIds,
-      });
-
-  /// Decode a local notification payload back into [NotificationData].
-  factory NotificationData.fromPayload(String payload) {
-    final map = jsonDecode(payload) as Map<String, dynamic>;
+  /// Construct from a plain map (for tests and local notification payload decoding).
+  factory NotificationData.fromMap(Map<String, dynamic> map) {
     final rawIds = map['suggested_walker_ids'];
     List<String>? walkerIds;
     if (rawIds is List) {
@@ -60,7 +58,25 @@ class NotificationData {
       type: map['type'] as String?,
       bookingId: map['booking_id'] as String?,
       suggestedWalkerIds: walkerIds,
+      walkerId: map['walker_id'] as String?,
+      walkerName: map['walker_name'] as String?,
+      reviewPrompt: map['review_prompt'] == true || map['review_prompt'] == 'true',
     );
+  }
+
+  String toPayload() => jsonEncode({
+        'type': type,
+        'booking_id': bookingId,
+        if (suggestedWalkerIds != null) 'suggested_walker_ids': suggestedWalkerIds,
+        if (walkerId != null) 'walker_id': walkerId,
+        if (walkerName != null) 'walker_name': walkerName,
+        if (reviewPrompt) 'review_prompt': true,
+      });
+
+  /// Decode a local notification payload back into [NotificationData].
+  factory NotificationData.fromPayload(String payload) {
+    final map = jsonDecode(payload) as Map<String, dynamic>;
+    return NotificationData.fromMap(map);
   }
 }
 
@@ -83,6 +99,8 @@ class NotificationRouter {
     required String? type,
     String? bookingId,
     List<String>? suggestedWalkerIds,
+    String? walkerId,
+    String? walkerName,
   }) {
     switch (type) {
       case 'booking_confirmed':
@@ -95,11 +113,19 @@ class NotificationRouter {
       case 'walk_started':
         return NotificationNavigation(
           route: '/active-walk',
-          arguments:
-              bookingId != null ? {'booking_id': bookingId} : null,
+          arguments: bookingId != null ? {'booking_id': bookingId} : null,
         );
       case 'walk_completed':
         return const NotificationNavigation(route: '/home', tab: 'past');
+      case 'review_prompt':
+        return NotificationNavigation(
+          route: 'review_sheet',
+          arguments: {
+            'booking_id': bookingId,
+            'walker_id': walkerId,
+            'walker_name': walkerName ?? 'your walker',
+          },
+        );
       case 'walk_request':
         return NotificationNavigation(
           route: '/walk-request',
@@ -362,6 +388,8 @@ class NotificationService {
       type: data.type,
       bookingId: data.bookingId,
       suggestedWalkerIds: data.suggestedWalkerIds,
+      walkerId: data.walkerId,
+      walkerName: data.walkerName,
     );
     if (nav != null) {
       _onNotificationTap?.call(nav);

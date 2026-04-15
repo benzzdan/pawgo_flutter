@@ -252,4 +252,52 @@ void main() {
       await tokenController.close();
     });
   });
+
+  group('NotificationData review_prompt fields', () {
+    test('fromMap extracts walkerId and walkerName', () {
+      final data = NotificationData.fromMap({
+        'type': 'review_prompt',
+        'booking_id': 'b-123',
+        'walker_id': 'w-456',
+        'walker_name': 'Carlos M.',
+        'review_prompt': 'true',
+      });
+      expect(data.type, 'review_prompt');
+      expect(data.bookingId, 'b-123');
+      expect(data.walkerId, 'w-456');
+      expect(data.walkerName, 'Carlos M.');
+      expect(data.reviewPrompt, true);
+    });
+
+    test('toPayload and fromPayload round-trip review_prompt fields', () {
+      const data = NotificationData(
+        type: 'review_prompt',
+        bookingId: 'b-123',
+        walkerId: 'w-456',
+        walkerName: 'Carlos M.',
+        reviewPrompt: true,
+      );
+      final payload = data.toPayload();
+      final restored = NotificationData.fromPayload(payload);
+      expect(restored.walkerId, 'w-456');
+      expect(restored.walkerName, 'Carlos M.');
+      expect(restored.reviewPrompt, true);
+    });
+  });
+
+  group('NotificationRouter review_prompt routing', () {
+    test('returns route review_sheet with booking args', () {
+      final nav = NotificationRouter.routeFor(
+        type: 'review_prompt',
+        bookingId: 'b-123',
+        walkerId: 'w-456',
+        walkerName: 'Carlos M.',
+      );
+      expect(nav, isNotNull);
+      expect(nav!.route, 'review_sheet');
+      expect(nav.arguments?['booking_id'], 'b-123');
+      expect(nav.arguments?['walker_id'], 'w-456');
+      expect(nav.arguments?['walker_name'], 'Carlos M.');
+    });
+  });
 }
