@@ -43,9 +43,14 @@ import 'package:pawgo/screens/bookings_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  if (DefaultFirebaseOptions.isConfigured) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } else {
+    debugPrint('Firebase: skipping init — placeholder config detected. '
+        'Run flutterfire configure to set up real Firebase.');
+  }
 
   const env = Env.local; // Switch to Env.production for release builds
   await Supabase.initialize(
@@ -126,13 +131,17 @@ class PawgoApp extends StatelessWidget {
     final initialRoute = session != null ? '/home' : '/';
 
     // Wire notification deep-link navigation using the global navigator key
-    NotificationService.instance.onNotificationTap = _handleNotificationTap;
+    if (DefaultFirebaseOptions.isConfigured) {
+      NotificationService.instance.onNotificationTap = _handleNotificationTap;
+    }
 
     // Initialize role detection and resume GPS broadcast on app restart
     if (session != null) {
       RoleService.instance.initialize();
       GpsBroadcastService.instance.resumeIfActiveWalk();
-      NotificationService.instance.initialize();
+      if (DefaultFirebaseOptions.isConfigured) {
+        NotificationService.instance.initialize();
+      }
     }
 
     return ValueListenableBuilder<ThemeMode>(
@@ -157,7 +166,14 @@ class PawgoApp extends StatelessWidget {
               '/profile': (context) => const ProfileScreen(),
               '/booking': (context) => const BookingScreen(),
               '/payment': (context) => const PaymentScreen(),
-              '/walker-bookings': (context) => const WalkerBookingsScreen(),
+              '/walker-bookings': (context) {
+                final args = ModalRoute.of(context)?.settings.arguments;
+                int initialTab = 0;
+                if (args is Map<String, dynamic>) {
+                  initialTab = (args['initialTab'] as int?) ?? 0;
+                }
+                return WalkerBookingsScreen(initialTab: initialTab);
+              },
               '/review': (context) => const ReviewScreen(),
               '/walker-earnings': (context) => const WalkerEarningsScreen(),
               '/insurance-claim': (context) => const InsuranceClaimScreen(),
@@ -219,7 +235,9 @@ class _AuthGateState extends State<_AuthGate> {
           AnalyticsService.instance.identify(userId);
         }
         RoleService.instance.initialize();
-        NotificationService.instance.initialize();
+        if (DefaultFirebaseOptions.isConfigured) {
+          NotificationService.instance.initialize();
+        }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             Navigator.pushReplacementNamed(context, '/home');
@@ -231,8 +249,10 @@ class _AuthGateState extends State<_AuthGate> {
         AnalyticsService.instance.reset();
         RoleService.instance.reset();
         GpsBroadcastService.instance.stopBroadcasting();
-        NotificationService.instance.removeToken();
-        NotificationService.instance.dispose();
+        if (DefaultFirebaseOptions.isConfigured) {
+          NotificationService.instance.removeToken();
+          NotificationService.instance.dispose();
+        }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && ModalRoute.of(context)?.settings.name != '/') {
             Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);

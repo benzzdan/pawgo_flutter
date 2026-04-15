@@ -9,7 +9,9 @@ import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class WalkerBookingsScreen extends StatefulWidget {
-  const WalkerBookingsScreen({super.key});
+  const WalkerBookingsScreen({super.key, this.initialTab = 0});
+  final int initialTab;
+  static const int defaultInitialTab = 0;
 
   @override
   State<WalkerBookingsScreen> createState() => _WalkerBookingsScreenState();
@@ -48,6 +50,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedTab = widget.initialTab;
     _loadWalkerBookings();
   }
 
