@@ -39,6 +39,7 @@ import 'package:pawgo/services/theme_service.dart';
 import 'package:pawgo/services/auth_service.dart';
 import 'package:pawgo/services/notification_service.dart';
 import 'package:pawgo/screens/bookings_screen.dart';
+import 'package:pawgo/widgets/review_bottom_sheet.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -246,6 +247,7 @@ class _AuthGateState extends State<_AuthGate> {
         // Resume GPS broadcast if walker has an active walk
         GpsBroadcastService.instance.resumeIfActiveWalk();
       } else if (event == AuthChangeEvent.signedOut) {
+        ReviewBottomSheet.shownThisSession = false; // reset for next session
         AnalyticsService.instance.reset();
         RoleService.instance.reset();
         GpsBroadcastService.instance.stopBroadcasting();

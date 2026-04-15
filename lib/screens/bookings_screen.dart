@@ -48,7 +48,9 @@ class _BookingsScreenState extends State<BookingsScreen> {
       BookingsScreen.pendingInitialTab = null;
     }
     _statusService = widget.bookingStatusService ?? BookingStatusService();
-    _fetchBookings().then((_) => _checkPendingReview());
+    _fetchBookings().then((_) {
+      if (_error == null) _checkPendingReview();
+    });
     _subscribeToUpdates();
     _subscribeToStatusService();
   }
