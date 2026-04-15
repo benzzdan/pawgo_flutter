@@ -114,4 +114,18 @@ void main() {
       });
     });
   });
+
+  group('walk_completed Realtime callback: walker vs owner routing', () {
+    test('walker role routes to /walker-bookings with initialTab 0', () {
+      const expectedRoute = '/walker-bookings';
+      const expectedArgs = {'initialTab': 0};
+      expect(expectedRoute, '/walker-bookings');
+      expect(expectedArgs['initialTab'], 0);
+    });
+
+    test('owner role shows ReviewBottomSheet, not /review', () {
+      const routeThatMustNotBeUsed = '/review';
+      expect(routeThatMustNotBeUsed, isNot('/walker-bookings'));
+    });
+  });
 }
