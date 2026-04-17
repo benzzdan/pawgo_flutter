@@ -113,9 +113,7 @@ class _WalkerEarningsScreenState extends State<WalkerEarningsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
         elevation: 0,
         title: Text(
           'Earnings',

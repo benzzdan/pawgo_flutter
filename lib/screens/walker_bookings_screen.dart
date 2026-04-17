@@ -9,7 +9,9 @@ import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class WalkerBookingsScreen extends StatefulWidget {
-  const WalkerBookingsScreen({super.key});
+  const WalkerBookingsScreen({super.key, this.initialTab = 0});
+  final int initialTab;
+  static const int defaultInitialTab = 0;
 
   @override
   State<WalkerBookingsScreen> createState() => _WalkerBookingsScreenState();
@@ -29,6 +31,10 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
   static const _activeStatuses = ['walk_started'];
   static const _completedStatuses = ['walk_completed'];
 
+  /// Bookings awaiting this walker's accept/decline response.
+  List<Map<String, dynamic>> get _pendingBookings =>
+      _bookings.where((b) => b['status'] == 'pending_walker_acceptance').toList();
+
   List<Map<String, dynamic>> get _filteredBookings {
     final statuses = switch (_selectedTab) {
       0 => _upcomingStatuses,
@@ -44,6 +50,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedTab = widget.initialTab;
     _loadWalkerBookings();
   }
 
@@ -84,12 +91,12 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
 
       _walkerId = walkerRes['id'] as String;
 
-      // Fetch all bookings assigned to this walker
+      // Fetch all bookings assigned to this walker (including pending acceptance)
       final bookings = await withRetry(() => _supabase
           .from('bookings')
-          .select('*, dogs(name, breed, photo_url), users!bookings_owner_id_fkey(full_name, avatar_url)')
+          .select('*, dogs(name, breed, photo_url), users!bookings_owner_id_fkey(full_name, avatar_url), walkers(user_id, hourly_rate_mxn)')
           .eq('walker_id', _walkerId!)
-          .inFilter('status', ['confirmed', 'walker_en_route', 'walk_started', 'walk_completed'])
+          .inFilter('status', ['pending_walker_acceptance', 'confirmed', 'walker_en_route', 'walk_started', 'walk_completed'])
           .order('scheduled_at', ascending: true));
 
       setState(() {
@@ -122,6 +129,20 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
     _bookingChannel = _supabase
         .channel('walker-bookings-$_walkerId')
         .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'bookings',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'walker_id',
+            value: _walkerId!,
+          ),
+          callback: (payload) {
+            // New booking assigned — reload to get joined data
+            _loadWalkerBookings();
+          },
+        )
+        .onPostgresChanges(
           event: PostgresChangeEvent.update,
           schema: 'public',
           table: 'bookings',
@@ -146,6 +167,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
                     ...updated,
                     'dogs': _bookings[idx]['dogs'],
                     'users': _bookings[idx]['users'],
+                    'walkers': _bookings[idx]['walkers'],
                   };
                 }
               }
@@ -317,9 +339,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
         elevation: 0,
         title: Text(
           'My Walk Sessions',
@@ -337,20 +357,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
               : Column(
                   children: [
                     _buildFilterTabs(),
-                    Expanded(
-                      child: _filteredBookings.isEmpty
-                          ? _buildEmptyState()
-                          : RefreshIndicator(
-                              onRefresh: _loadWalkerBookings,
-                              color: AppColors.orange500,
-                              child: ListView.separated(
-                                padding: const EdgeInsets.all(24),
-                                itemCount: _filteredBookings.length,
-                                separatorBuilder: (_, __) => const SizedBox(height: 16),
-                                itemBuilder: (context, index) => _buildBookingCard(_filteredBookings[index]),
-                              ),
-                            ),
-                    ),
+                    Expanded(child: _buildTabContent()),
                   ],
                 ),
     );
@@ -386,6 +393,228 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
             ),
           );
         }),
+      ),
+    );
+  }
+
+  Widget _buildTabContent() {
+    final pending = _selectedTab == 0 ? _pendingBookings : <Map<String, dynamic>>[];
+    final filtered = _filteredBookings;
+    final hasPending = pending.isNotEmpty;
+    final hasFiltered = filtered.isNotEmpty;
+    final isEmpty = !hasPending && !hasFiltered;
+
+    return RefreshIndicator(
+      onRefresh: _loadWalkerBookings,
+      color: AppColors.orange500,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        children: [
+          if (isEmpty)
+            SizedBox(
+              height: MediaQuery.of(context).size.height * 0.55,
+              child: _buildEmptyState(),
+            )
+          else ...[
+            if (hasPending) ...[
+              _buildPendingRequestsSection(pending),
+              if (hasFiltered) const SizedBox(height: AppSpacing.lg),
+            ],
+            ...filtered.map((b) => Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                  child: _buildBookingCard(b),
+                )),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPendingRequestsSection(List<Map<String, dynamic>> pending) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: AppColors.amber500,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Text(
+              'Pending Requests',
+              style: GoogleFonts.nunito(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.sm, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.amber500.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '${pending.length}',
+                style: GoogleFonts.nunito(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.amber500,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        ...pending.map((b) => Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: _buildPendingCard(b),
+            )),
+      ],
+    );
+  }
+
+  Widget _buildPendingCard(Map<String, dynamic> booking) {
+    final dog = booking['dogs'] as Map<String, dynamic>?;
+    final owner = booking['users'] as Map<String, dynamic>?;
+    final bookingId = booking['id'] as String;
+    final scheduledAt = booking['scheduled_at'] as String?;
+    final durationMinutes = booking['duration_minutes'];
+    final deadlineStr = booking['acceptance_deadline'] as String?;
+
+    // Compute time remaining for the mini countdown
+    String? deadlineLabel;
+    if (deadlineStr != null) {
+      final deadline = DateTime.tryParse(deadlineStr);
+      if (deadline != null) {
+        final remaining = deadline.difference(DateTime.now().toUtc());
+        if (remaining.isNegative) {
+          deadlineLabel = 'Expired';
+        } else {
+          final mins = remaining.inMinutes;
+          final secs = remaining.inSeconds % 60;
+          deadlineLabel = '${mins}m ${secs.toString().padLeft(2, '0')}s left';
+        }
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardTheme.color,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        boxShadow: AppShadows.card,
+        border: Border.all(
+          color: AppColors.amber500.withValues(alpha: 0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: AppColors.orange50,
+                child: Icon(PhosphorIcons.user(),
+                    size: 20, color: AppColors.orange500),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      owner?['full_name'] ?? 'Dog Owner',
+                      style: GoogleFonts.nunito(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      '${dog?['name'] ?? 'Dog'} · ${durationMinutes ?? '?'} min',
+                      style: GoogleFonts.nunito(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (deadlineLabel != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+                  decoration: BoxDecoration(
+                    color: deadlineLabel == 'Expired'
+                        ? AppColors.red50
+                        : AppColors.amber50,
+                    borderRadius: BorderRadius.circular(AppSpacing.sm),
+                  ),
+                  child: Text(
+                    deadlineLabel,
+                    style: GoogleFonts.nunito(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: deadlineLabel == 'Expired'
+                          ? AppColors.red500
+                          : AppColors.yellow800,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              Icon(PhosphorIcons.calendarBlank(),
+                  size: 14, color: AppColors.textTertiary),
+              const SizedBox(width: AppSpacing.xs),
+              Text(
+                _formatDateTime(scheduledAt),
+                style: GoogleFonts.nunito(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          SizedBox(
+            height: 48,
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.pushNamed(context, '/walk-request', arguments: {
+                  'booking_id': bookingId,
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.amber500,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.button)),
+              ),
+              child: Text(
+                'View Request',
+                style: GoogleFonts.nunito(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

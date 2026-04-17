@@ -28,13 +28,12 @@ class _SignInScreenState extends State<SignInScreen> {
           ),
         ),
         child: SafeArea(
-          child: SingleChildScrollView(
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: ConstrainedBox(
               constraints: BoxConstraints(
-                minHeight: MediaQuery.of(context).size.height -
-                    MediaQuery.of(context).padding.top -
-                    MediaQuery.of(context).padding.bottom,
+                minHeight: constraints.maxHeight,
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -58,6 +57,7 @@ class _SignInScreenState extends State<SignInScreen> {
                 ],
               ),
             ),
+          ),
           ),
         ),
       ),
@@ -85,8 +85,8 @@ class _SignInScreenState extends State<SignInScreen> {
               ),
             ],
           ),
-          child: const Center(
-            child: Text('\u{1F43E}', style: TextStyle(fontSize: 48)),
+          child: Center(
+            child: Icon(PhosphorIcons.pawPrint(PhosphorIconsStyle.fill), size: 48, color: Colors.white),
           ),
         ),
         const SizedBox(height: 24),
@@ -176,14 +176,17 @@ class _SignInScreenState extends State<SignInScreen> {
           ],
         ),
         const SizedBox(height: 16),
-        // Phone Sign In
-        _SignInButton(
-          onTap: () => setState(() => _showPhoneForm = true),
-          backgroundColor: AppColors.white,
-          textColor: AppColors.textPrimary,
-          label: 'Continue with Phone',
-          icon: const Text('\u{1F4F1}', style: TextStyle(fontSize: 24)),
-          border: true,
+        // Phone Sign In (coming soon)
+        Opacity(
+          opacity: 0.4,
+          child: _SignInButton(
+            onTap: () {},
+            backgroundColor: AppColors.white,
+            textColor: AppColors.textPrimary,
+            label: 'Continue with Phone (Coming Soon)',
+            icon: Icon(PhosphorIcons.deviceMobile(), color: AppColors.textPrimary, size: 24),
+            border: true,
+          ),
         ),
         const SizedBox(height: 24),
         // Sign up link

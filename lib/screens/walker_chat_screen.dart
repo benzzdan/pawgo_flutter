@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pawgo/config/env.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/role_service.dart';
@@ -393,9 +395,19 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
 
     final XFile? picked;
     if (source == ImageSource.camera) {
-      picked = await _imagePicker.pickImage(source: ImageSource.camera);
+      picked = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1200,
+        maxHeight: 1200,
+        imageQuality: 70,
+      );
     } else {
-      picked = await _imagePicker.pickMedia();
+      picked = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1200,
+        maxHeight: 1200,
+        imageQuality: 70,
+      );
     }
     if (picked == null) return;
 
@@ -412,7 +424,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
         body: {
           'booking_id': _bookingId,
           'file_name': fileName,
-          'file_data': bytes.toList(),
+          'file_data': base64Encode(bytes),
           'content_type': mimeType,
         },
       );
@@ -431,11 +443,23 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
               ?.pushNamedAndRemoveUntil('/', (route) => false);
           return;
         }
-        ErrorHandler.instance.showRecoverableError(context, 'Failed to upload media');
+        _showUploadRetrySnackBar(source);
       }
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
+  }
+
+  void _showUploadRetrySnackBar(ImageSource source) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Failed to upload media'),
+        action: SnackBarAction(
+          label: 'Retry',
+          onPressed: () => _handleMediaUpload(source: source),
+        ),
+      ),
+    );
   }
 
   String _getMimeType(String fileName) {
@@ -544,7 +568,6 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -918,6 +941,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Row(
         children: [
+          if (RoleService.instance.activeRole.value == ActiveRole.walker)
           GestureDetector(
             onTap: _isUploading ? null : _showMediaSourcePicker,
             child: Container(
@@ -1120,7 +1144,7 @@ class _MessageBubble extends StatelessWidget {
             crossAxisAlignment:
                 isCurrentUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
-              if (_hasMedia) _buildMediaContent(),
+              if (_hasMedia) _buildTappableMedia(context),
               if (message['content'] != null &&
                   message['content'].toString().isNotEmpty)
                 Container(
@@ -1195,6 +1219,25 @@ class _MessageBubble extends StatelessWidget {
     );
   }
 
+  Widget _buildTappableMedia(BuildContext context) {
+    final mediaUrl = message['media_url']?.toString();
+    final isVideo = message['media_type'] == 'video';
+
+    if (mediaUrl == null || isVideo) return _buildMediaContent();
+
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => FullScreenPhotoViewer(imageUrl: mediaUrl),
+          ),
+        );
+      },
+      child: _buildMediaContent(),
+    );
+  }
+
   Widget _buildMediaContent() {
     final mediaUrl = message['media_url'].toString();
     final isVideo = message['media_type'] == 'video';
@@ -1228,6 +1271,9 @@ class _MessageBubble extends StatelessWidget {
             Image.network(
               mediaUrl,
               fit: BoxFit.cover,
+              headers: {
+                'apikey': Env.current.supabaseAnonKey,
+              },
               errorBuilder: (_, __, ___) => Container(
                 color: AppColors.surface,
                 child: Center(
@@ -1341,6 +1387,47 @@ class _DateSeparator extends StatelessWidget {
           ),
           Expanded(
             child: Container(height: 1, color: AppColors.textTertiary.withValues(alpha: 0.3)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class FullScreenPhotoViewer extends StatelessWidget {
+  final String imageUrl;
+
+  const FullScreenPhotoViewer({super.key, required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          Center(
+            child: InteractiveViewer(
+              child: Image.network(
+                imageUrl,
+                fit: BoxFit.contain,
+                headers: {
+                  'apikey': Env.current.supabaseAnonKey,
+                },
+                errorBuilder: (_, __, ___) => Icon(
+                  PhosphorIcons.imageBroken(),
+                  size: 64,
+                  color: Colors.white54,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            right: 16,
+            child: IconButton(
+              icon: Icon(PhosphorIcons.x(), color: Colors.white, size: 28),
+              onPressed: () => Navigator.pop(context),
+            ),
           ),
         ],
       ),

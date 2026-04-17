@@ -212,7 +212,6 @@ class _WalkerApplicationStep2ScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [

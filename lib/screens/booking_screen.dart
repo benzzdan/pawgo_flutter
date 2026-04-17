@@ -5,6 +5,7 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/screens/bookings_screen.dart';
 
 class BookingScreen extends StatefulWidget {
   const BookingScreen({super.key});
@@ -161,9 +162,14 @@ class _BookingScreenState extends State<BookingScreen> {
       if (!mounted) return;
 
       if (response.status == 201) {
-        final bookingId = response.data['booking_id'];
         AnalyticsService.instance.bookingInitiated(walkerId: _walkerId!);
-        _navigateToPayment(bookingId);
+        BookingsScreen.pendingInitialTab = 'upcoming';
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/home',
+          (route) => false,
+          arguments: {'tab': 2},
+        );
       } else {
         ErrorHandler.instance.handleFunctionError(
           context,
@@ -203,25 +209,10 @@ class _BookingScreenState extends State<BookingScreen> {
     );
   }
 
-  void _navigateToPayment(String bookingId) {
-    Navigator.pushReplacementNamed(
-      context,
-      '/payment',
-      arguments: {
-        'booking_id': bookingId,
-        'total_price': _totalPrice(),
-        'walker_name': _walkerName(),
-        'duration_minutes': _durationMinutes,
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.white,
         elevation: 0,
         leading: IconButton(
           icon: Icon(PhosphorIcons.arrowLeft(), color: AppColors.textPrimary),

@@ -154,7 +154,6 @@ class _WalkerApplicationStep4ScreenState
     }
 
     return Scaffold(
-      backgroundColor: AppColors.background,
       body: SafeArea(
         child: _loading
             ? const Center(
@@ -211,7 +210,6 @@ class _WalkerApplicationStep4ScreenState
 
   Widget _buildSubmittedScreen() {
     return Scaffold(
-      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.xl),

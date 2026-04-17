@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
@@ -12,6 +15,9 @@ import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/config/env.dart';
+import 'package:pawgo/widgets/review_bottom_sheet.dart';
+import 'package:pawgo/screens/bookings_screen.dart';
 
 class ActiveWalkScreen extends StatefulWidget {
   const ActiveWalkScreen({
@@ -29,7 +35,7 @@ class ActiveWalkScreen extends StatefulWidget {
 }
 
 class _ActiveWalkScreenState extends State<ActiveWalkScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   // Map state
   GoogleMapController? _mapController;
   final List<LatLng> _routePoints = [];
@@ -90,9 +96,27 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
   bool _isLoading = true;
   String? _error;
 
+  // Owner monitoring presence (US-015)
+  final OwnerHeartbeatManager _heartbeatManager = OwnerHeartbeatManager();
+  final WalkerPresencePoller _presencePoller = WalkerPresencePoller();
+  OwnerPresenceState _ownerPresenceState = OwnerPresenceState.notWatching;
+  String? _walkerUserId; // walker's auth user_id for notification target
+
+  // Walk photos
+  final List<Map<String, dynamic>> _walkPhotos = [];
+  final ImagePicker _imagePicker = ImagePicker();
+  bool _isUploadingPhoto = false;
+
+  // Auto-end walk timer
+  int? _bookedDurationMinutes;
+  DateTime? _walkStartedAt;
+  Timer? _autoEndTimer;
+  _WalkTimeState _walkTimeState = _WalkTimeState.normal;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -104,6 +128,18 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     _trackingService = widget.trackingService ?? TrackingService();
     _bookingStatusService =
         widget.bookingStatusService ?? BookingStatusService();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (_isWalker) return; // Only owner manages heartbeat
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      _heartbeatManager.pause();
+    } else if (state == AppLifecycleState.resumed) {
+      _heartbeatManager.resume(onHeartbeat: _sendOwnerHeartbeat);
+    }
   }
 
   @override
@@ -173,24 +209,14 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     // Subscribe to live updates via TrackingService
     _trackingService.subscribe(bookingId);
 
-    // Subscribe to booking status changes
+    // Subscribe to booking status changes (updates UI state only).
+    // Navigation to /review on walk_completed is handled by the direct
+    // Realtime channel in _subscribeToBookingStatus() — do NOT also
+    // navigate here, or the review screen will be prematurely destroyed.
     _bookingStatusSub =
         _bookingStatusService.statusStream.listen((update) {
       if (mounted) {
         setState(() => _bookingStatus = update.newStatus);
-        if (update.newStatus == 'walk_completed' && !_isWalker) {
-          // Owner: redirect to bookings after walk ends
-          Future.delayed(const Duration(seconds: 2), () {
-            if (mounted) {
-              Navigator.pushNamedAndRemoveUntil(
-                  context, '/home', (route) => false,
-                  arguments: {'tab': 2});
-            }
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Walk completed!')),
-          );
-        }
       }
     });
     _bookingStatusService.subscribeToBooking(bookingId);
@@ -212,6 +238,11 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
             value: _bookingId!,
           ),
           callback: (payload) {
+            // Refresh photos tab if a new image message arrives
+            final mediaType = payload.newRecord['media_type']?.toString();
+            if (mediaType == 'image' && mounted) {
+              _fetchWalkPhotos();
+            }
             final senderId = payload.newRecord['sender_id']?.toString();
             if (senderId != currentUserId && mounted) {
               setState(() => _unreadChatCount++);
@@ -223,6 +254,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
     _elapsedTimer?.cancel();
     _gpsTimeoutTimer?.cancel();
@@ -233,8 +265,16 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     _locationSub?.cancel();
     _connectionSub?.cancel();
     _bookingStatusSub?.cancel();
+    _autoEndTimer?.cancel();
     _trackingService.dispose();
     _bookingStatusService.dispose();
+    // US-015: Clean up presence timers
+    _heartbeatManager.dispose();
+    _presencePoller.dispose();
+    // Owner clears their presence on screen exit
+    if (!_isWalker) {
+      _clearOwnerPresence();
+    }
     // Note: GPS broadcast is NOT stopped here intentionally.
     // The service is a singleton that continues in the background
     // so GPS keeps broadcasting even if the user navigates away.
@@ -271,23 +311,38 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
         _isWalker = isWalker;
         // Calculate elapsed time from started_at
         final startedAt = data['started_at'] as String?;
+        _bookedDurationMinutes = data['duration_minutes'] as int?;
         if (startedAt != null) {
-          final start = DateTime.parse(startedAt);
-          _elapsedMinutes = DateTime.now().difference(start).inMinutes;
+          _walkStartedAt = DateTime.parse(startedAt);
+          _elapsedMinutes = DateTime.now().difference(_walkStartedAt!).inMinutes;
           _startElapsedTimer();
         }
       });
 
       // Subscribe to booking status changes (for review prompt on completion)
-      if (!isWalker) {
-        _subscribeToBookingStatus();
+      _subscribeToBookingStatus();
+
+      // US-015: Owner monitoring presence
+      _walkerUserId = walkerUserId;
+      final status = data['status'] as String?;
+      if (status == 'walk_started') {
+        if (!isWalker) {
+          // Owner side: start heartbeat so walker knows we're watching
+          _startOwnerHeartbeat();
+        } else {
+          // Walker side: start polling owner_last_seen_at
+          _startWalkerPresencePolling();
+        }
       }
 
       // If the current user is the walker and walk is active, start GPS broadcast
-      final status = data['status'] as String?;
       if (isWalker && status == 'walk_started') {
         _startGpsBroadcast();
+        _startAutoEndTimer();
       }
+
+      // Fetch existing walk photos
+      _fetchWalkPhotos();
     } catch (e) {
       final appError = AppError.from(e);
       if (appError.isAuthError) {
@@ -329,11 +384,15 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
           callback: (payload) {
             final status = payload.newRecord['status'] as String?;
             if (status == 'walk_completed' && mounted) {
-              Navigator.pushReplacementNamed(context, '/review', arguments: {
-                'booking_id': _bookingId,
-                'walker_id': _walkerId,
-                'walker_name': _walkerName,
-              });
+              if (_isWalker) {
+                Navigator.pushReplacementNamed(
+                  context,
+                  '/walker-bookings',
+                  arguments: {'initialTab': 0},
+                );
+              } else {
+                _showReviewSheet();
+              }
             }
           },
         )
@@ -346,6 +405,271 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
       if (!mounted) return;
       setState(() => _elapsedMinutes++);
     });
+  }
+
+  // ── Walk photos ──
+
+  Future<void> _fetchWalkPhotos() async {
+    if (_bookingId == null) return;
+    try {
+      final data = await Supabase.instance.client
+          .from('messages')
+          .select('id, media_url, media_type, created_at, sender_id')
+          .eq('booking_id', _bookingId!)
+          .eq('media_type', 'image')
+          .order('created_at', ascending: false);
+      if (!mounted) return;
+      setState(() {
+        _walkPhotos.clear();
+        _walkPhotos.addAll(List<Map<String, dynamic>>.from(data));
+      });
+    } catch (e) {
+      debugPrint('Failed to fetch walk photos: $e');
+    }
+  }
+
+  Future<void> _takeAndUploadPhoto() async {
+    if (_bookingId == null || _isUploadingPhoto) return;
+
+    final picked = await _imagePicker.pickImage(
+      source: ImageSource.camera,
+      maxWidth: 1200,
+      maxHeight: 1200,
+      imageQuality: 70,
+    );
+    if (picked == null) return;
+
+    setState(() => _isUploadingPhoto = true);
+
+    try {
+      final file = File(picked.path);
+      final bytes = await file.readAsBytes();
+      final base64Data = base64Encode(bytes);
+      final ext = picked.path.split('.').last.toLowerCase();
+      final mimeType = ext == 'png' ? 'image/png' : 'image/jpeg';
+
+      final res = await Supabase.instance.client.functions.invoke(
+        'upload-walk-media',
+        body: {
+          'booking_id': _bookingId,
+          'file_data': base64Data,
+          'file_name': '${DateTime.now().millisecondsSinceEpoch}.$ext',
+          'content_type': mimeType,
+          'media_type': 'image',
+        },
+      );
+
+      if (!mounted) return;
+
+      if (res.status == 200 || res.status == 201) {
+        // Refresh photos list
+        await _fetchWalkPhotos();
+      } else {
+        debugPrint('Photo upload failed: ${res.status}');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Photo upload failed', style: GoogleFonts.nunito())),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Photo upload failed: $e', style: GoogleFonts.nunito())),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploadingPhoto = false);
+    }
+  }
+
+  // ── Auto-end walk timer ──
+
+  void _startAutoEndTimer() {
+    if (_bookedDurationMinutes == null || _walkStartedAt == null) return;
+    _autoEndTimer?.cancel();
+    // Check every 30 seconds
+    _checkWalkTimeState();
+    _autoEndTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _checkWalkTimeState();
+    });
+  }
+
+  void _checkWalkTimeState() {
+    if (_bookedDurationMinutes == null || _walkStartedAt == null || !mounted) return;
+
+    final elapsed = DateTime.now().difference(_walkStartedAt!).inMinutes;
+    final remaining = _bookedDurationMinutes! - elapsed;
+    final previousState = _walkTimeState;
+
+    _WalkTimeState newState;
+    if (remaining > 5) {
+      newState = _WalkTimeState.normal;
+    } else if (remaining > 0) {
+      newState = _WalkTimeState.nearingEnd;
+    } else if (remaining > -5) {
+      newState = _WalkTimeState.overtime;
+    } else {
+      newState = _WalkTimeState.autoEnding;
+    }
+
+    if (newState != previousState) {
+      setState(() => _walkTimeState = newState);
+
+      if (newState == _WalkTimeState.nearingEnd && _isWalker) {
+        _showWalkTimeWarning('Walk ends in $remaining minutes', 'Please start wrapping up.');
+      } else if (newState == _WalkTimeState.overtime && _isWalker) {
+        _showWalkTimeWarning('Booked time has ended', 'Walk will auto-end in 5 minutes.');
+      } else if (newState == _WalkTimeState.autoEnding) {
+        _performAutoEnd();
+      }
+    }
+  }
+
+  void _showWalkTimeWarning(String title, String message) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title, style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+        content: Text(message, style: GoogleFonts.nunito()),
+        actions: [
+          if (_isWalker)
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _endWalk();
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.orange500),
+              child: Text('End Walk Now',
+                  style: GoogleFonts.nunito(fontWeight: FontWeight.w700, color: Colors.white)),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Continue',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _performAutoEnd() async {
+    if (_bookingId == null || _endingWalk) return;
+    _autoEndTimer?.cancel();
+
+    setState(() => _endingWalk = true);
+
+    try {
+      final res = await Supabase.instance.client.functions.invoke(
+        'end-walk',
+        body: {'booking_id': _bookingId},
+      );
+
+      if (!mounted) return;
+
+      if (res.status == 200) {
+        AnalyticsService.instance.walkCompleted(bookingId: _bookingId!);
+        GpsBroadcastService.instance.stopBroadcasting();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Walk auto-ended — booked time expired',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w600)),
+            backgroundColor: AppColors.orange500,
+          ),
+        );
+        Navigator.pop(context);
+      } else {
+        setState(() => _endingWalk = false);
+        debugPrint('Auto-end failed: ${res.status}');
+      }
+    } catch (e) {
+      if (mounted) setState(() => _endingWalk = false);
+      debugPrint('Auto-end error: $e');
+    }
+  }
+
+  // ── US-015: Owner monitoring presence heartbeat ──
+
+  /// Writes `owner_last_seen_at = NOW()` on the booking row.
+  /// Called immediately and then every 30 s by [OwnerHeartbeatManager].
+  Future<void> _sendOwnerHeartbeat() async {
+    if (_bookingId == null) return;
+    try {
+      await Supabase.instance.client
+          .from('bookings')
+          .update({'owner_last_seen_at': DateTime.now().toUtc().toIso8601String()})
+          .eq('id', _bookingId!);
+    } catch (e) {
+      debugPrint('Owner heartbeat failed: $e');
+    }
+  }
+
+  /// Starts the owner heartbeat timer and sends the first notification
+  /// to the walker (once per session).
+  void _startOwnerHeartbeat() {
+    _heartbeatManager.startHeartbeat(onHeartbeat: _sendOwnerHeartbeat);
+    _notifyWalkerOfOwnerMonitoring();
+  }
+
+  /// Starts the walker-side polling timer that reads `owner_last_seen_at`.
+  void _startWalkerPresencePolling() {
+    _presencePoller.startPolling(onPoll: _pollOwnerPresence);
+  }
+
+  /// Reads `owner_last_seen_at` from the booking and updates
+  /// [_ownerPresenceState] so the indicator reflects the latest value.
+  Future<void> _pollOwnerPresence() async {
+    if (_bookingId == null) return;
+    try {
+      final data = await Supabase.instance.client
+          .from('bookings')
+          .select('owner_last_seen_at')
+          .eq('id', _bookingId!)
+          .single();
+      if (!mounted) return;
+      final raw = data['owner_last_seen_at'] as String?;
+      final lastSeen = raw != null ? DateTime.parse(raw) : null;
+      setState(() {
+        _ownerPresenceState = OwnerPresenceState.fromLastSeen(lastSeen);
+      });
+    } catch (e) {
+      debugPrint('Owner presence poll failed: $e');
+    }
+  }
+
+  /// Sends a push notification to the walker the first time the owner
+  /// opens the Active Walk screen in this session.
+  Future<void> _notifyWalkerOfOwnerMonitoring() async {
+    if (_heartbeatManager.hasNotifiedWalker) return;
+    if (_walkerUserId == null || _bookingId == null) return;
+    _heartbeatManager.markNotified();
+    try {
+      await Supabase.instance.client.functions.invoke(
+        'send-notification',
+        body: {
+          'type': 'owner_monitoring',
+          'user_id': _walkerUserId,
+          'title': 'Owner is watching',
+          'body': 'The owner is now monitoring the walk',
+          'data': {'booking_id': _bookingId},
+        },
+      );
+    } catch (e) {
+      debugPrint('Owner monitoring notification failed: $e');
+    }
+  }
+
+  /// Clears `owner_last_seen_at` on the booking when the owner leaves.
+  Future<void> _clearOwnerPresence() async {
+    if (_bookingId == null) return;
+    try {
+      await Supabase.instance.client
+          .from('bookings')
+          .update({'owner_last_seen_at': null})
+          .eq('id', _bookingId!);
+    } catch (e) {
+      debugPrint('Clear owner presence failed: $e');
+    }
   }
 
   Future<void> _loadExistingLocations() async {
@@ -452,6 +776,32 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
 
   double _toRad(double deg) => deg * (3.14159265358979323846 / 180);
 
+  void _showReviewSheet() {
+    if (_bookingId == null || _walkerId == null) return;
+    ReviewBottomSheet.shownThisSession = true;
+    showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => ReviewBottomSheet(
+        bookingId: _bookingId!,
+        walkerId: _walkerId!,
+        walkerName: _walkerName ?? 'your walker',
+      ),
+    ).then((submitted) {
+      if (!mounted) return;
+      BookingsScreen.pendingInitialTab = 'past';
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/home',
+        (route) => false,
+        arguments: {'tab': 2},
+      );
+    });
+  }
+
   Future<void> _endWalk() async {
     if (_bookingId == null) return;
 
@@ -523,7 +873,6 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -533,6 +882,9 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                     _bookingId != null &&
                     !_isLoading)
               _buildConnectionBanner(),
+            // Walk time warning banner
+            if (_walkTimeState != _WalkTimeState.normal)
+              _buildWalkTimeBanner(),
             // Header
             _buildHeader(),
             Expanded(
@@ -549,7 +901,14 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                               const SizedBox(height: 16),
                               _buildStatsGrid(),
                               if (_isWalker) ...[
-                                const SizedBox(height: 16),
+                                const SizedBox(height: AppSpacing.sm),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                                  child: OwnerPresenceIndicator(
+                                    presenceState: _ownerPresenceState,
+                                  ),
+                                ),
+                                const SizedBox(height: AppSpacing.md),
                                 _buildEndWalkButton(),
                               ],
                               const SizedBox(height: 16),
@@ -609,6 +968,56 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                   fontWeight: FontWeight.w700,
                   color: Colors.white,
                 ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWalkTimeBanner() {
+    final Color bgColor;
+    final Color textColor;
+    final IconData icon;
+    final String message;
+
+    switch (_walkTimeState) {
+      case _WalkTimeState.nearingEnd:
+        bgColor = const Color(0xFFFEF3C7); // amber-100
+        textColor = const Color(0xFF92400E); // amber-800
+        icon = PhosphorIcons.clock();
+        final remaining = _bookedDurationMinutes! - _elapsedMinutes;
+        message = 'Walk ends in ${remaining > 0 ? remaining : 1} min — please start wrapping up';
+      case _WalkTimeState.overtime:
+        bgColor = const Color(0xFFFEE2E2); // red-100
+        textColor = const Color(0xFF991B1B); // red-800
+        icon = PhosphorIcons.warning();
+        message = 'Booked time ended — walk will auto-end in 5 min';
+      case _WalkTimeState.autoEnding:
+        bgColor = const Color(0xFFFEE2E2);
+        textColor = const Color(0xFF991B1B);
+        icon = PhosphorIcons.stopCircle();
+        message = 'Auto-ending walk...';
+      case _WalkTimeState.normal:
+        return const SizedBox.shrink();
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: bgColor,
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: textColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: GoogleFonts.nunito(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: textColor,
               ),
             ),
           ),
@@ -1000,8 +1409,8 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                 ),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Center(
-                child: Text('\u{1F469}', style: TextStyle(fontSize: 24)),
+              child: Center(
+                child: Icon(PhosphorIcons.personSimpleWalk(), size: 28, color: Colors.white),
               ),
             ),
             const SizedBox(width: 12),
@@ -1202,19 +1611,22 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
         child: Row(
           children: [
             _TabButton(
-              label: '\u{1F4CD} Updates',
+              label: 'Updates',
+              icon: PhosphorIcons.listBullets(),
               isSelected: _activeTab == 'updates',
               onTap: () => setState(() => _activeTab = 'updates'),
             ),
             const SizedBox(width: 6),
             _TabButton(
-              label: '\u{1F4F7} Photos',
+              label: 'Photos',
+              icon: PhosphorIcons.camera(),
               isSelected: _activeTab == 'photos',
               onTap: () => setState(() => _activeTab = 'photos'),
             ),
             const SizedBox(width: 6),
             _TabButton(
-              label: '\u{1F4CD} GPS Log',
+              label: 'GPS Log',
+              icon: PhosphorIcons.mapPin(),
               isSelected: _activeTab == 'gps',
               onTap: () => setState(() => _activeTab = 'gps'),
             ),
@@ -1378,34 +1790,146 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Walk Photos',
-          style: GoogleFonts.nunito(
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            color: AppColors.textPrimary,
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Walk Photos',
+              style: GoogleFonts.nunito(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            if (_isWalker)
+              GestureDetector(
+                onTap: _isUploadingPhoto ? null : _takeAndUploadPhoto,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.orange500,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: _isUploadingPhoto
+                      ? const SizedBox(
+                          width: 18, height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(PhosphorIcons.camera(), size: 16, color: Colors.white),
+                            const SizedBox(width: 4),
+                            Text('Take Photo',
+                                style: GoogleFonts.nunito(
+                                    fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+                          ],
+                        ),
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 16),
-        Center(
-          child: Column(
+        if (_walkPhotos.isEmpty)
+          GestureDetector(
+            onTap: _isWalker ? _takeAndUploadPhoto : null,
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(PhosphorIcons.camera(),
+                      size: 48, color: AppColors.textTertiary.withValues(alpha: 0.5)),
+                  const SizedBox(height: 8),
+                  Text(
+                    _isWalker ? 'Tap to take a photo' : 'No photos yet',
+                    style: GoogleFonts.nunito(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+            ),
+            itemCount: _walkPhotos.length,
+            itemBuilder: (context, index) {
+              final photo = _walkPhotos[index];
+              final url = photo['media_url'] as String?;
+              if (url == null) return const SizedBox.shrink();
+              return GestureDetector(
+                onTap: () => _openFullScreenPhoto(url),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    url,
+                    fit: BoxFit.cover,
+                    headers: {'apikey': Env.current.supabaseAnonKey},
+                    errorBuilder: (_, __, ___) => Container(
+                      color: AppColors.surface,
+                      child: Center(
+                        child: Icon(PhosphorIcons.imageBroken(),
+                            size: 24, color: AppColors.textTertiary),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  void _openFullScreenPhoto(String imageUrl) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: Colors.black,
+          body: Stack(
             children: [
-              Icon(PhosphorIcons.camera(),
-                  size: 48, color: AppColors.textTertiary.withValues(alpha: 0.5)),
-              const SizedBox(height: 8),
-              Text(
-                'Photos from the walk will appear here',
-                style: GoogleFonts.nunito(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textSecondary,
+              Center(
+                child: InteractiveViewer(
+                  child: Image.network(
+                    imageUrl,
+                    fit: BoxFit.contain,
+                    headers: {'apikey': Env.current.supabaseAnonKey},
+                    errorBuilder: (_, __, ___) => Icon(
+                      PhosphorIcons.imageBroken(),
+                      size: 64,
+                      color: Colors.white54,
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 48, right: 16,
+                child: GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Icon(Icons.close, color: Colors.white, size: 24),
+                  ),
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 16),
-      ],
+      ),
     );
   }
 
@@ -1520,6 +2044,142 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
   }
 }
 
+// --- Owner monitoring presence types (exported for testing) ---
+
+/// Whether the owner is currently watching the walk.
+enum OwnerPresenceState {
+  watching,
+  notWatching;
+
+  /// Determines presence state from [lastSeen] timestamp.
+  /// Owner is "watching" if last seen within 60 seconds of [now].
+  static OwnerPresenceState fromLastSeen(DateTime? lastSeen, {DateTime? now}) {
+    if (lastSeen == null) return notWatching;
+    final reference = now ?? DateTime.now().toUtc();
+    final diff = reference.difference(lastSeen).inSeconds;
+    return diff <= 60 ? watching : notWatching;
+  }
+}
+
+/// Manages the owner-side heartbeat timer that updates owner_last_seen_at.
+/// Extracted for testability.
+class OwnerHeartbeatManager {
+  Timer? _heartbeatTimer;
+  bool _hasNotifiedWalker = false;
+
+  bool get hasNotifiedWalker => _hasNotifiedWalker;
+
+  void markNotified() => _hasNotifiedWalker = true;
+
+  void reset() {
+    _hasNotifiedWalker = false;
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+
+  /// Starts the heartbeat. Fires [onHeartbeat] immediately, then every 30s.
+  void startHeartbeat({required VoidCallback onHeartbeat}) {
+    _heartbeatTimer?.cancel();
+    // Immediate first heartbeat
+    onHeartbeat();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      onHeartbeat();
+    });
+  }
+
+  /// Pauses the heartbeat timer (e.g. app backgrounded).
+  void pause() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+
+  /// Resumes the heartbeat. Fires [onHeartbeat] immediately, then every 30s.
+  void resume({required VoidCallback onHeartbeat}) {
+    startHeartbeat(onHeartbeat: onHeartbeat);
+  }
+
+  void dispose() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+}
+
+/// Manages the walker-side polling timer that checks owner_last_seen_at.
+class WalkerPresencePoller {
+  Timer? _pollTimer;
+
+  /// Starts polling. Fires [onPoll] immediately, then every 15s.
+  void startPolling({required VoidCallback onPoll}) {
+    _pollTimer?.cancel();
+    onPoll();
+    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      onPoll();
+    });
+  }
+
+  void dispose() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+}
+
+/// Walk time state relative to the booked duration.
+enum _WalkTimeState {
+  /// More than 5 minutes remaining.
+  normal,
+  /// 5 minutes or less remaining.
+  nearingEnd,
+  /// Booked time has elapsed.
+  overtime,
+  /// 5+ minutes past booked time — auto-ending.
+  autoEnding,
+}
+
+/// Visual indicator showing whether the owner is watching the walk.
+/// Used in the walker's active walk view.
+class OwnerPresenceIndicator extends StatelessWidget {
+  const OwnerPresenceIndicator({
+    super.key,
+    required this.presenceState,
+  });
+
+  final OwnerPresenceState presenceState;
+
+  @override
+  Widget build(BuildContext context) {
+    final isWatching = presenceState == OwnerPresenceState.watching;
+    final text = isWatching ? 'Owner is watching' : 'Owner is not watching';
+    final dotColor = isWatching ? AppColors.green500 : AppColors.textTertiary;
+    final textColor = isWatching ? AppColors.green600 : AppColors.textTertiary;
+
+    return Semantics(
+      label: text,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: dotColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          Text(
+            text,
+            style: GoogleFonts.nunito(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: textColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _WalkStat extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
@@ -1585,17 +2245,20 @@ class _WalkStat extends StatelessWidget {
 
 class _TabButton extends StatelessWidget {
   final String label;
+  final IconData? icon;
   final bool isSelected;
   final VoidCallback onTap;
 
   const _TabButton({
     required this.label,
+    this.icon,
     required this.isSelected,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final color = isSelected ? Colors.white : AppColors.textSecondary;
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
@@ -1615,13 +2278,22 @@ class _TabButton extends StatelessWidget {
                 : null,
           ),
           child: Center(
-            child: Text(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 16, color: color),
+                  const SizedBox(width: 4),
+                ],
+                Text(
               label,
               style: GoogleFonts.nunito(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
-                color: isSelected ? Colors.white : AppColors.textSecondary,
+                color: color,
               ),
+                ),
+              ],
             ),
           ),
         ),

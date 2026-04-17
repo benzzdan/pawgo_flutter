@@ -49,6 +49,26 @@ class Walker {
     );
   }
 
+  /// Parse from the nearby_walkers RPC result (flat row, no nested `users`).
+  factory Walker.fromRpc(Map<String, dynamic> json) {
+    return Walker(
+      id: json['id'] as String,
+      userId: json['user_id'] as String,
+      name: json['full_name'] as String? ?? 'Unknown Walker',
+      avatarUrl: json['avatar_url'] as String?,
+      rating: (json['avg_rating'] as num?)?.toDouble() ?? 0,
+      totalWalks: json['total_walks'] as int? ?? 0,
+      hourlyRateMxn: (json['hourly_rate_mxn'] as num?)?.toDouble() ?? 0,
+      backgroundChecked: json['background_checked'] as bool? ?? false,
+      isEnabled: json['is_enabled'] as bool? ?? false,
+      bio: json['bio'] as String?,
+      experienceYears: json['experience_years'] as int? ?? 0,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'] as String)
+          : null,
+    );
+  }
+
   /// Display helpers for UI
   String get displayAvatar => avatarUrl != null ? '' : '\u{1F6B6}';
   String get displayPrice => '\$${hourlyRateMxn.toStringAsFixed(0)}';
@@ -197,6 +217,7 @@ class Booking {
   /// Whether the booking is in the future / active.
   bool get isUpcoming =>
       status == 'pending' ||
+      status == 'pending_walker_acceptance' ||
       status == 'confirmed' ||
       status == 'walker_en_route' ||
       status == 'walk_started';
@@ -212,6 +233,8 @@ class Booking {
     switch (status) {
       case 'pending':
         return 'Pending';
+      case 'pending_walker_acceptance':
+        return 'Awaiting Walker';
       case 'confirmed':
         return 'Confirmed';
       case 'walker_en_route':

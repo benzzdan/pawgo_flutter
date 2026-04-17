@@ -109,7 +109,6 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [

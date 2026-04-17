@@ -67,9 +67,9 @@ class GpsBroadcastService {
     // Send initial position immediately
     await _captureAndSendPosition();
 
-    // Set up periodic broadcast every 5 seconds
+    // Set up periodic broadcast every 15 seconds
     _broadcastTimer = Timer.periodic(
-      const Duration(seconds: 5),
+      const Duration(seconds: 15),
       (_) => _captureAndSendPosition(),
     );
 

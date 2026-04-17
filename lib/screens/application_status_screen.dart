@@ -141,7 +141,6 @@ class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
