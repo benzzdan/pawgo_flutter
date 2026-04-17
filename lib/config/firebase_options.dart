@@ -9,6 +9,10 @@ import 'package:flutter/foundation.dart'
 ///
 /// Or manually update from the Firebase console → Project Settings → Your apps.
 class DefaultFirebaseOptions {
+  /// Returns true if real Firebase config has been set up (not placeholders).
+  static bool get isConfigured =>
+      currentPlatform.apiKey != 'PLACEHOLDER_API_KEY';
+
   static FirebaseOptions get currentPlatform {
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:

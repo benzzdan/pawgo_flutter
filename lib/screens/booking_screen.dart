@@ -168,6 +168,7 @@ class _BookingScreenState extends State<BookingScreen> {
           context,
           '/home',
           (route) => false,
+          arguments: {'tab': 2},
         );
       } else {
         ErrorHandler.instance.handleFunctionError(

@@ -327,9 +327,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         ],
                       ),
-                      child: const Center(
-                        child:
-                            Text('\u{1F464}', style: TextStyle(fontSize: 30)),
+                      child: Center(
+                        child: Icon(PhosphorIcons.user(), size: 30, color: Colors.white),
                       ),
                     ),
                     const SizedBox(width: 16),

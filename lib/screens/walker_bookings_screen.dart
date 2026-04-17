@@ -402,23 +402,30 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
     final filtered = _filteredBookings;
     final hasPending = pending.isNotEmpty;
     final hasFiltered = filtered.isNotEmpty;
-
-    if (!hasPending && !hasFiltered) return _buildEmptyState();
+    final isEmpty = !hasPending && !hasFiltered;
 
     return RefreshIndicator(
       onRefresh: _loadWalkerBookings,
       color: AppColors.orange500,
       child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
-          if (hasPending) ...[
-            _buildPendingRequestsSection(pending),
-            if (hasFiltered) const SizedBox(height: AppSpacing.lg),
+          if (isEmpty)
+            SizedBox(
+              height: MediaQuery.of(context).size.height * 0.55,
+              child: _buildEmptyState(),
+            )
+          else ...[
+            if (hasPending) ...[
+              _buildPendingRequestsSection(pending),
+              if (hasFiltered) const SizedBox(height: AppSpacing.lg),
+            ],
+            ...filtered.map((b) => Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                  child: _buildBookingCard(b),
+                )),
           ],
-          ...filtered.map((b) => Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                child: _buildBookingCard(b),
-              )),
         ],
       ),
     );

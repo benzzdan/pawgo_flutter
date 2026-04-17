@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/role_service.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class TopBar extends StatelessWidget {
   const TopBar({super.key});
@@ -31,9 +32,10 @@ class TopBar extends StatelessWidget {
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Center(
-                      child: Text(
-                        isWalkerMode ? '\u{1F6B6}' : '\u{1F43E}',
-                        style: const TextStyle(fontSize: 22),
+                      child: Icon(
+                        isWalkerMode ? PhosphorIcons.personSimpleWalk() : PhosphorIcons.pawPrint(),
+                        color: Colors.white,
+                        size: 24,
                       ),
                     ),
                   ),

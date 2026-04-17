@@ -606,15 +606,13 @@ class _WalkerCard extends StatelessWidget {
                               child: Image.network(
                                 walker.avatarUrl!,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const Center(
-                                  child: Text('\u{1F6B6}',
-                                      style: TextStyle(fontSize: 30)),
+                                errorBuilder: (_, __, ___) => Center(
+                                  child: Icon(PhosphorIcons.personSimpleWalk(), size: 30, color: AppColors.textSecondary),
                                 ),
                               ),
                             )
-                          : const Center(
-                              child: Text('\u{1F6B6}',
-                                  style: TextStyle(fontSize: 30)),
+                          : Center(
+                              child: Icon(PhosphorIcons.personSimpleWalk(), size: 30, color: AppColors.textSecondary),
                             ),
                     ),
                     if (walker.backgroundChecked)
@@ -758,8 +756,8 @@ class _WalkerCard extends StatelessWidget {
                       color: AppColors.purple100,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Center(
-                      child: Text('\u{1F6B6}', style: TextStyle(fontSize: 14)),
+                    child: Center(
+                      child: Icon(PhosphorIcons.personSimpleWalk(), size: 14, color: Colors.white),
                     ),
                   ),
                   const SizedBox(width: 6),

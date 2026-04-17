@@ -13,6 +13,7 @@ import 'package:pawgo/screens/walker_earnings_screen.dart';
 import 'package:pawgo/screens/walker_chat_list_screen.dart';
 import 'package:pawgo/screens/profile_screen.dart';
 import 'package:pawgo/services/role_service.dart';
+import 'package:pawgo/widgets/review_bottom_sheet.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -31,6 +32,7 @@ class MainShellState extends State<MainShell> {
   final _roleService = RoleService.instance;
   final _supabase = Supabase.instance.client;
   Timer? _unreadPollTimer;
+  RealtimeChannel? _walkCompletionChannel;
 
   final _ownerScreens = const [
     HomeScreen(),
@@ -51,6 +53,7 @@ class MainShellState extends State<MainShell> {
     super.initState();
     _roleService.activeRole.addListener(_onRoleChanged);
     _setupUnreadTracking();
+    _subscribeToWalkCompletion();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final args = ModalRoute.of(context)?.settings.arguments;
       if (args is Map<String, dynamic>) {
@@ -70,7 +73,97 @@ class MainShellState extends State<MainShell> {
   void dispose() {
     _roleService.activeRole.removeListener(_onRoleChanged);
     _unreadPollTimer?.cancel();
+    _walkCompletionChannel?.unsubscribe();
     super.dispose();
+  }
+
+  /// Subscribes to booking updates for the logged-in owner and shows the
+  /// review sheet immediately when a walk transitions to walk_completed.
+  /// This fires regardless of which tab the owner is currently on.
+  void _subscribeToWalkCompletion() {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    _walkCompletionChannel = _supabase.channel('shell_walk_completion_$userId');
+    _walkCompletionChannel!
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'bookings',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'owner_id',
+            value: userId,
+          ),
+          callback: (payload) {
+            if (payload.newRecord['status'] != 'walk_completed') return;
+            // Give ActiveWalkScreen 300ms to handle it first (it has its own
+            // subscription and shows the sheet immediately on the same event).
+            Future.delayed(const Duration(milliseconds: 300), () {
+              if (!mounted) return;
+              if (ReviewBottomSheet.shownThisSession) return;
+              final bookingId = payload.newRecord['id'] as String?;
+              final walkerId = payload.newRecord['walker_id'] as String?;
+              if (bookingId == null || walkerId == null) return;
+              _showWalkCompletedReview(bookingId, walkerId);
+            });
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> _showWalkCompletedReview(
+      String bookingId, String walkerId) async {
+    // Check if already reviewed (edge case: event fires twice)
+    try {
+      final existing = await _supabase
+          .from('reviews')
+          .select('id')
+          .eq('booking_id', bookingId)
+          .maybeSingle();
+      if (existing != null) return;
+    } catch (_) {
+      return;
+    }
+
+    if (!mounted) return;
+    if (ReviewBottomSheet.shownThisSession) return;
+
+    // Fetch walker name for the sheet header
+    String walkerName = 'your walker';
+    try {
+      final w = await _supabase
+          .from('walkers')
+          .select('users(full_name)')
+          .eq('id', walkerId)
+          .maybeSingle();
+      walkerName =
+          (w?['users'] as Map<String, dynamic>?)?['full_name'] as String? ??
+              walkerName;
+    } catch (_) {}
+
+    if (!mounted) return;
+    if (ReviewBottomSheet.shownThisSession) return;
+
+    ReviewBottomSheet.shownThisSession = true;
+    showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => ReviewBottomSheet(
+        bookingId: bookingId,
+        walkerId: walkerId,
+        walkerName: walkerName,
+      ),
+    ).then((submitted) {
+      if (submitted == true && mounted) {
+        // Switch to the Bookings tab and show Past walks
+        BookingsScreen.pendingInitialTab = 'past';
+        _onOwnerTabTap(2);
+      }
+    });
   }
 
   void _onRoleChanged() {
@@ -94,9 +187,9 @@ class MainShellState extends State<MainShell> {
 
     _fetchUnreadCount();
 
-    // Poll every 15s — lightweight REST query, no Realtime channel needed
+    // Poll every 60s — lightweight REST query, no Realtime channel needed
     _unreadPollTimer = Timer.periodic(
-      const Duration(seconds: 15),
+      const Duration(seconds: 60),
       (_) {
         if (mounted) _fetchUnreadCount();
       },

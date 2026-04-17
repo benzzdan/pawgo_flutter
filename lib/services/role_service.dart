@@ -29,12 +29,46 @@ class RoleService {
   final ValueNotifier<bool> hasPendingApplication = ValueNotifier(false);
 
   bool _initialized = false;
+  RealtimeChannel? _walkerChannel;
 
   /// Query walkers and walker_applications tables to determine role.
+  /// Also subscribes to Realtime for live walker approval updates.
   Future<void> initialize() async {
     if (_initialized) return;
     await refresh();
+    _subscribeToWalkerApproval();
     _initialized = true;
+  }
+
+  void _subscribeToWalkerApproval() {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    _walkerChannel = _client.channel('role_walker_$userId');
+    _walkerChannel!
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'walkers',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
+          callback: (_) => refresh(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'walkers',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
+          callback: (_) => refresh(),
+        )
+        .subscribe();
   }
 
   /// Re-query the database and update role notifiers.
@@ -99,6 +133,8 @@ class RoleService {
 
   /// Reset state on sign-out.
   void reset() {
+    _walkerChannel?.unsubscribe();
+    _walkerChannel = null;
     role.value = UserRole.owner;
     activeRole.value = ActiveRole.owner;
     isWalker.value = false;

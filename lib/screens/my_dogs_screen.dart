@@ -183,7 +183,7 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
       width: 200,
       fit: BoxFit.contain,
       errorBuilder: (_, __, ___) =>
-          const Text('\u{1F436}', style: TextStyle(fontSize: 48)),
+          Icon(PhosphorIcons.dog(), size: 48, color: AppColors.textSecondary),
     );
 
     // Subtle floating idle animation unless reduce-motion

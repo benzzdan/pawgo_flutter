@@ -779,7 +779,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
   void _showReviewSheet() {
     if (_bookingId == null || _walkerId == null) return;
     ReviewBottomSheet.shownThisSession = true;
-    showModalBottomSheet<void>(
+    showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -790,7 +790,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
         walkerId: _walkerId!,
         walkerName: _walkerName ?? 'your walker',
       ),
-    ).then((_) {
+    ).then((submitted) {
       if (!mounted) return;
       BookingsScreen.pendingInitialTab = 'past';
       Navigator.pushNamedAndRemoveUntil(

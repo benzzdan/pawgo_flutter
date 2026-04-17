@@ -228,7 +228,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Good $_timeOfDay \u{1F44B}',
+                          'Good $_timeOfDay!',
                           style: GoogleFonts.nunito(
                             fontSize: 32,
                             fontWeight: FontWeight.w900,

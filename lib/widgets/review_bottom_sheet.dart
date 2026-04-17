@@ -62,7 +62,7 @@ class _ReviewBottomSheetState extends State<ReviewBottomSheet> {
         bookingId: widget.bookingId,
         rating: _rating,
       );
-      Navigator.pop(context);
+      Navigator.pop(context, true); // true = successfully submitted
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
@@ -77,7 +77,7 @@ class _ReviewBottomSheetState extends State<ReviewBottomSheet> {
     }
   }
 
-  void _skip() => Navigator.pop(context);
+  void _skip() => Navigator.pop(context, false); // false = skipped
 
   String _ratingLabel() {
     switch (_rating) {

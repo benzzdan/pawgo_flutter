@@ -139,7 +139,7 @@ void _showReviewSheetFromNav(NotificationNavigation nav) {
   if (bookingId == null || walkerId == null) return;
 
   ReviewBottomSheet.shownThisSession = true;
-  showModalBottomSheet<void>(
+  showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
     shape: const RoundedRectangleBorder(
@@ -150,14 +150,17 @@ void _showReviewSheetFromNav(NotificationNavigation nav) {
       walkerId: walkerId,
       walkerName: args['walker_name'] as String? ?? 'your walker',
     ),
-  ).then((_) {
-    // Always navigate to past bookings after the review prompt dismisses (submit or skip).
-    BookingsScreen.pendingInitialTab = 'past';
-    ErrorHandler.instance.navigatorKey.currentState?.pushNamedAndRemoveUntil(
-      '/home',
-      (route) => false,
-      arguments: {'tab': 2},
-    );
+  ).then((submitted) {
+    // Only navigate to past bookings when the review was actually submitted.
+    // If skipped, leave the user on the current screen.
+    if (submitted == true) {
+      BookingsScreen.pendingInitialTab = 'past';
+      ErrorHandler.instance.navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        '/home',
+        (route) => false,
+        arguments: {'tab': 2},
+      );
+    }
   });
 }
 
@@ -258,13 +261,15 @@ class _AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<_AuthGate> {
-  late final Stream<AuthState> _authStream;
+  StreamSubscription<AuthState>? _authSub;
+  // Prevents scheduling multiple concurrent pending-review checks when
+  // both signedIn and tokenRefreshed fire in quick succession.
+  bool _reviewCheckScheduled = false;
 
   @override
   void initState() {
     super.initState();
-    _authStream = Supabase.instance.client.auth.onAuthStateChange;
-    _authStream.listen((authState) {
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((authState) {
       if (!mounted) return;
       final event = authState.event;
       if (event == AuthChangeEvent.signedIn ||
@@ -281,13 +286,22 @@ class _AuthGateState extends State<_AuthGate> {
           if (mounted) {
             Navigator.pushReplacementNamed(context, '/home');
             // After navigation settles, check for an unreviewed completed walk.
-            Future.delayed(const Duration(milliseconds: 500), _checkPendingReviewOnStartup);
+            // Guard prevents multiple concurrent checks if both signedIn and
+            // tokenRefreshed fire before the first check runs.
+            if (!_reviewCheckScheduled) {
+              _reviewCheckScheduled = true;
+              Future.delayed(
+                const Duration(milliseconds: 500),
+                _checkPendingReviewOnStartup,
+              );
+            }
           }
         });
         // Resume GPS broadcast if walker has an active walk
         GpsBroadcastService.instance.resumeIfActiveWalk();
       } else if (event == AuthChangeEvent.signedOut) {
         ReviewBottomSheet.shownThisSession = false; // reset for next session
+        _reviewCheckScheduled = false;
         AnalyticsService.instance.reset();
         RoleService.instance.reset();
         GpsBroadcastService.instance.stopBroadcasting();
@@ -304,7 +318,14 @@ class _AuthGateState extends State<_AuthGate> {
     });
   }
 
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
+  }
+
   Future<void> _checkPendingReviewOnStartup() async {
+    _reviewCheckScheduled = false;
     if (ReviewBottomSheet.shownThisSession) return;
     try {
       final supabase = Supabase.instance.client;

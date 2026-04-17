@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pawgo/config/env.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/role_service.dart';
@@ -394,9 +395,19 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
 
     final XFile? picked;
     if (source == ImageSource.camera) {
-      picked = await _imagePicker.pickImage(source: ImageSource.camera);
+      picked = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1200,
+        maxHeight: 1200,
+        imageQuality: 70,
+      );
     } else {
-      picked = await _imagePicker.pickMedia();
+      picked = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1200,
+        maxHeight: 1200,
+        imageQuality: 70,
+      );
     }
     if (picked == null) return;
 
@@ -930,6 +941,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Row(
         children: [
+          if (RoleService.instance.activeRole.value == ActiveRole.walker)
           GestureDetector(
             onTap: _isUploading ? null : _showMediaSourcePicker,
             child: Container(
@@ -1259,6 +1271,9 @@ class _MessageBubble extends StatelessWidget {
             Image.network(
               mediaUrl,
               fit: BoxFit.cover,
+              headers: {
+                'apikey': Env.current.supabaseAnonKey,
+              },
               errorBuilder: (_, __, ___) => Container(
                 color: AppColors.surface,
                 child: Center(
@@ -1395,6 +1410,9 @@ class FullScreenPhotoViewer extends StatelessWidget {
               child: Image.network(
                 imageUrl,
                 fit: BoxFit.contain,
+                headers: {
+                  'apikey': Env.current.supabaseAnonKey,
+                },
                 errorBuilder: (_, __, ___) => Icon(
                   PhosphorIcons.imageBroken(),
                   size: 64,
