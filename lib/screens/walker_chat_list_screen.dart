@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:pawgo/services/chat_presence_tracker.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -182,8 +183,9 @@ class _WalkerChatListScreenState extends State<WalkerChatListScreen> {
       };
       item['sort_key'] = newMessage['created_at'] ?? item['sort_key'];
 
-      // Increment unread if not from current user
-      if (newMessage['sender_id'] != _currentUserId) {
+      // US-010: Increment unread only if not from current user AND chat is not open
+      if (newMessage['sender_id'] != _currentUserId &&
+          !ChatPresenceTracker.isOnChat(bookingId)) {
         item['unread_count'] = (item['unread_count'] as int) + 1;
       }
 
