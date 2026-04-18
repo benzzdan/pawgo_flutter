@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:pawgo/services/live_activity_service.dart';
 
 /// Statuses that trigger starting a Live Activity.

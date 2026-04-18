@@ -24,6 +24,8 @@ import 'package:pawgo/screens/bookings_screen.dart';
 import 'package:pawgo/utils/walk_end_helper.dart';
 import 'package:pawgo/services/live_activity_service.dart';
 import 'package:pawgo/utils/live_activity_bridge.dart';
+import 'package:pawgo/utils/home_widget_bridge.dart';
+import 'package:home_widget/home_widget.dart';
 
 class ActiveWalkScreen extends StatefulWidget {
   const ActiveWalkScreen({
@@ -118,6 +120,9 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
   // iOS Live Activity bridge (US-016/017)
   late final LiveActivityBridge _liveActivityBridge;
 
+  // Android Home Widget bridge (US-018)
+  late final HomeWidgetBridge _homeWidgetBridge;
+
   // Auto-end walk timer
   int? _bookedDurationMinutes;
   DateTime? _walkStartedAt;
@@ -150,6 +155,24 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     _liveActivityBridge = LiveActivityBridge(
       service: LiveActivityService(),
       isPlatformSupported: isIOSPlatform,
+    );
+
+    // US-018: Initialize Android Home Widget bridge
+    _homeWidgetBridge = HomeWidgetBridge(
+      saveWidgetData: (String key, dynamic value) async {
+        if (value is int) {
+          await HomeWidget.saveWidgetData<int>(key, value);
+        } else {
+          await HomeWidget.saveWidgetData<String>(key, value.toString());
+        }
+      },
+      updateWidget: () async {
+        await HomeWidget.updateWidget(
+          name: 'WalkStatusWidget',
+          iOSName: 'WalkStatusWidget',
+          androidName: 'WalkStatusWidget',
+        );
+      },
     );
   }
 
@@ -245,6 +268,13 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
           newStatus: update.newStatus,
           walkerName: _walkerName ?? 'Walker',
           dogName: _dogName ?? 'Dog',
+        );
+        // US-018: Update Android Home Widget
+        _homeWidgetBridge.onBookingStatusChanged(
+          newStatus: update.newStatus,
+          walkerName: _walkerName ?? 'Walker',
+          dogName: _dogName ?? 'Dog',
+          elapsedMinutes: _elapsedMinutes,
         );
       }
     });
@@ -374,9 +404,18 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
         }
       }
 
+      // US-018: Update Android Home Widget with current status
+      if (status != null) {
+        _homeWidgetBridge.onBookingStatusChanged(
+          newStatus: status,
+          walkerName: _walkerName ?? 'Walker',
+          dogName: _dogName ?? 'Dog',
+          elapsedMinutes: _elapsedMinutes,
+        );
+      }
+
       // US-015: Owner monitoring presence
       _walkerUserId = walkerUserId;
-      final status = data['status'] as String?;
       if (status == 'walk_started') {
         if (!isWalker) {
           // Owner side: start heartbeat so walker knows we're watching
@@ -442,6 +481,13 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                 walkerName: _walkerName ?? 'Walker',
                 dogName: _dogName ?? 'Dog',
               );
+              // US-018: Update Android Home Widget
+              _homeWidgetBridge.onBookingStatusChanged(
+                newStatus: status,
+                walkerName: _walkerName ?? 'Walker',
+                dogName: _dogName ?? 'Dog',
+                elapsedMinutes: _elapsedMinutes,
+              );
             }
             if (status == 'walk_completed' && mounted) {
               if (_isWalker) {
@@ -464,6 +510,8 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     _elapsedTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (!mounted) return;
       setState(() => _elapsedMinutes++);
+      // US-018: Push elapsed time to Android Home Widget
+      _homeWidgetBridge.updateElapsedTime(elapsedMinutes: _elapsedMinutes);
     });
   }
 

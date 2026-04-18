@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="#FFFFFF"
+    android:gravity="center_vertical">
+
+    <!-- App title -->
+    <TextView
+        android:id="@+id/widget_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Pawgo"
+        android:textColor="#4A2C2A"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Walker name -->
+    <TextView
+        android:id="@+id/widget_walker_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#1F2937"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="4dp" />
+
+    <!-- Current stage label -->
+    <TextView
+        android:id="@+id/widget_stage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="No active walk"
+        android:textColor="#6B7280"
+        android:textSize="13sp"
+        android:layout_marginBottom="4dp" />
+
+    <!-- Elapsed time -->
+    <TextView
+        android:id="@+id/widget_elapsed"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#C07D4D"
+        android:textSize="12sp" />
+
+</LinearLayout>
