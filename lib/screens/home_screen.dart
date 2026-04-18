@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/widgets/stat_card.dart';
@@ -10,6 +9,7 @@ import 'package:pawgo/services/ad_service.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/role_service.dart';
 import 'package:pawgo/screens/main_shell.dart';
+import 'package:pawgo/widgets/walk_timeline.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -29,6 +29,9 @@ class _HomeScreenState extends State<HomeScreen> {
   int _active = 0;
   int _completed = 0;
   String? _activeBookingId;
+  String? _activeBookingStatus;
+  String? _activeWalkerName;
+  String? _activeDogName;
   RealtimeChannel? _bookingsChannel;
   Timer? _statsPollTimer;
 
@@ -132,7 +135,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final bookings = await Supabase.instance.client
           .from('bookings')
-          .select('id, status')
+          .select('id, status, walkers(users(full_name)), dogs(name)')
           .eq('owner_id', userId);
 
       final list = bookings as List;
@@ -140,6 +143,9 @@ class _HomeScreenState extends State<HomeScreen> {
       int active = 0;
       int completed = 0;
       String? activeId;
+      String? activeStatus;
+      String? activeWalkerName;
+      String? activeDogName;
 
       for (final b in list) {
         final status = b['status'] as String?;
@@ -148,9 +154,23 @@ class _HomeScreenState extends State<HomeScreen> {
           case 'confirmed':
           case 'walker_en_route':
             upcoming++;
+            // Also track walker_en_route as active for timeline display
+            if (status == 'walker_en_route' && activeId == null) {
+              activeId = b['id'] as String?;
+              activeStatus = status;
+              activeWalkerName =
+                  b['walkers']?['users']?['full_name'] as String?;
+              activeDogName = b['dogs']?['name'] as String?;
+            }
           case 'walk_started':
             active++;
-            activeId ??= b['id'] as String?;
+            if (activeId == null) {
+              activeId = b['id'] as String?;
+              activeStatus = status;
+              activeWalkerName =
+                  b['walkers']?['users']?['full_name'] as String?;
+              activeDogName = b['dogs']?['name'] as String?;
+            }
           case 'walk_completed':
             completed++;
         }
@@ -163,6 +183,9 @@ class _HomeScreenState extends State<HomeScreen> {
           _active = active;
           _completed = completed;
           _activeBookingId = activeId;
+          _activeBookingStatus = activeStatus;
+          _activeWalkerName = activeWalkerName;
+          _activeDogName = activeDogName;
         });
       }
     } catch (e) {
@@ -292,9 +315,9 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             const SizedBox(height: 20),
 
-            // Active Walk Banner — only when there is an active walk
-            if (_active > 0) ...[
-              _buildActiveWalkBanner(context),
+            // Active Walk Banner — when there is an active walk or walker en route
+            if (_activeBookingId != null && _activeBookingStatus != null) ...[
+              _buildActiveWalkCard(context),
               const SizedBox(height: 20),
             ],
 
@@ -557,169 +580,20 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildActiveWalkBanner(BuildContext context) {
+  Widget _buildActiveWalkCard(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: GestureDetector(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      child: ActiveWalkTimelineCard(
+        bookingId: _activeBookingId!,
+        bookingStatus: _activeBookingStatus!,
+        walkerName: _activeWalkerName ?? 'Walker',
+        dogName: _activeDogName ?? 'your dog',
         onTap: () => Navigator.pushNamed(context, '/active-walk',
             arguments: _activeBookingId),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [AppColors.green500, AppColors.emerald400],
-            ),
-            borderRadius: BorderRadius.circular(AppRadius.card),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.green500.withValues(alpha: 0.35),
-                blurRadius: 28,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Stack(
-            children: [
-              // Background ripple circle
-              Positioned(
-                top: -30,
-                right: -30,
-                child: Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.08),
-                  ),
-                ),
-              ),
-              // Pulsing ripple effect behind LIVE badge
-              Positioned(
-                right: 20,
-                top: 10,
-                child: _buildPulseRipple(),
-              ),
-              Row(
-                children: [
-                  Container(
-                    width: 54,
-                    height: 54,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Icon(PhosphorIcons.mapPin(PhosphorIconsStyle.fill),
-                        color: Colors.white, size: 28),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Active Walk',
-                          style: GoogleFonts.nunito(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            Icon(PhosphorIcons.clock(),
-                                color: Colors.white70, size: 14),
-                            const SizedBox(width: 6),
-                            Text(
-                              '18 min \u{2022} 1.2 miles',
-                              style: GoogleFonts.nunito(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white.withValues(alpha: 0.85),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  // LIVE badge with arrow
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                          ),
-                        )
-                            .animate(
-                                onPlay: (c) =>
-                                    c.repeat(reverse: true))
-                            .fade(
-                                begin: 1.0,
-                                end: 0.3,
-                                duration: 800.ms),
-                        const SizedBox(width: 6),
-                        Text(
-                          'LIVE',
-                          style: GoogleFonts.nunito(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Icon(PhosphorIcons.arrowRight(),
-                            color: Colors.white, size: 14),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Pulsing ripple rings behind the location icon.
-  Widget _buildPulseRipple() {
-    return SizedBox(
-      width: 54,
-      height: 54,
-      child: Stack(
-        alignment: Alignment.center,
-        children: List.generate(3, (i) {
-          return Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.25),
-                width: 2,
-              ),
-            ),
-          )
-              .animate(
-                  onPlay: (c) => c.repeat(),
-                  delay: (i * 600).ms)
-              .scaleXY(begin: 0.4, end: 1.6, duration: 1800.ms)
-              .fadeOut(begin: 0.6, duration: 1800.ms);
-        }),
+        onMapTap: () => Navigator.pushNamed(context, '/active-walk',
+            arguments: _activeBookingId),
+        onChatTap: () => Navigator.pushNamed(context, '/chat',
+            arguments: {'booking_id': _activeBookingId}),
       ),
     );
   }
