@@ -22,6 +22,8 @@ import 'package:pawgo/widgets/walk_photos_tab.dart';
 import 'package:pawgo/widgets/walk_timeline.dart';
 import 'package:pawgo/screens/bookings_screen.dart';
 import 'package:pawgo/utils/walk_end_helper.dart';
+import 'package:pawgo/services/live_activity_service.dart';
+import 'package:pawgo/utils/live_activity_bridge.dart';
 
 class ActiveWalkScreen extends StatefulWidget {
   const ActiveWalkScreen({
@@ -113,6 +115,9 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
   bool _isLoadingPhotos = true;
   bool _hasNewPhotos = false;
 
+  // iOS Live Activity bridge (US-016/017)
+  late final LiveActivityBridge _liveActivityBridge;
+
   // Auto-end walk timer
   int? _bookedDurationMinutes;
   DateTime? _walkStartedAt;
@@ -134,6 +139,18 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     _trackingService = widget.trackingService ?? TrackingService();
     _bookingStatusService =
         widget.bookingStatusService ?? BookingStatusService();
+
+    // US-017: Initialize Live Activity bridge (iOS only)
+    bool isIOSPlatform;
+    try {
+      isIOSPlatform = Platform.isIOS;
+    } catch (_) {
+      isIOSPlatform = false;
+    }
+    _liveActivityBridge = LiveActivityBridge(
+      service: LiveActivityService(),
+      isPlatformSupported: isIOSPlatform,
+    );
   }
 
   @override
@@ -223,6 +240,12 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
         _bookingStatusService.statusStream.listen((update) {
       if (mounted) {
         setState(() => _bookingStatus = update.newStatus);
+        // US-017: Notify Live Activity bridge of status change
+        _liveActivityBridge.onBookingStatusChanged(
+          newStatus: update.newStatus,
+          walkerName: _walkerName ?? 'Walker',
+          dogName: _dogName ?? 'Dog',
+        );
       }
     });
     _bookingStatusService.subscribeToBooking(bookingId);
@@ -288,6 +311,8 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     if (!_isWalker) {
       _clearOwnerPresence();
     }
+    // US-017: Clean up Live Activity bridge
+    _liveActivityBridge.dispose();
     // Note: GPS broadcast is NOT stopped here intentionally.
     // The service is a singleton that continues in the background
     // so GPS keeps broadcasting even if the user navigates away.
@@ -334,6 +359,20 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
 
       // Subscribe to booking status changes (for review prompt on completion)
       _subscribeToBookingStatus();
+
+      // US-017: Start Live Activity if walk is already in progress
+      final status = data['status'] as String?;
+      if (status == 'walker_en_route' || status == 'walk_started') {
+        _liveActivityBridge.onBookingStatusChanged(
+          newStatus: status!,
+          walkerName: _walkerName ?? 'Walker',
+          dogName: _dogName ?? 'Dog',
+        );
+        if (status == 'walk_started' && _elapsedMinutes > 0) {
+          _liveActivityBridge.setElapsedMinutes(_elapsedMinutes);
+          _liveActivityBridge.setWalkStartedAt(_walkStartedAt);
+        }
+      }
 
       // US-015: Owner monitoring presence
       _walkerUserId = walkerUserId;
@@ -396,6 +435,14 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
           ),
           callback: (payload) {
             final status = payload.newRecord['status'] as String?;
+            // US-017: End Live Activity on walk completion
+            if (status != null) {
+              _liveActivityBridge.onBookingStatusChanged(
+                newStatus: status,
+                walkerName: _walkerName ?? 'Walker',
+                dogName: _dogName ?? 'Dog',
+              );
+            }
             if (status == 'walk_completed' && mounted) {
               if (_isWalker) {
                 Navigator.pushReplacementNamed(

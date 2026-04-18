@@ -7,8 +7,15 @@ import 'package:flutter/foundation.dart';
 /// and Lock Screen widget with walk progress. On Android and other platforms,
 /// all methods are silent no-ops.
 class LiveActivityService {
-  LiveActivityService();
+  /// Creates a LiveActivityService.
+  ///
+  /// [platformOverride] allows tests to bypass the `Platform.isIOS` check.
+  /// When null (default), the service checks `Platform.isIOS` at runtime.
+  /// When true, all methods execute regardless of platform.
+  /// When false, all methods are no-ops.
+  LiveActivityService({bool? platformOverride}) : _platformOverride = platformOverride;
 
+  final bool? _platformOverride;
   String? _activityId;
 
   /// Whether a Live Activity is currently active.
@@ -85,11 +92,9 @@ class LiveActivityService {
     }
   }
 
-  /// Platform guard — returns true only on iOS.
-  /// Uses a getter so it can be evaluated at call time (not compile time),
-  /// and gracefully returns false in test environments where Platform
-  /// may throw.
+  /// Platform guard — returns true only on iOS (or when overridden for tests).
   bool get _isIOS {
+    if (_platformOverride != null) return _platformOverride;
     try {
       return Platform.isIOS;
     } catch (_) {
