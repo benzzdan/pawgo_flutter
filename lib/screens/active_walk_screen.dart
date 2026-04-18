@@ -19,6 +19,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/config/env.dart';
 import 'package:pawgo/widgets/review_bottom_sheet.dart';
 import 'package:pawgo/widgets/walk_photos_tab.dart';
+import 'package:pawgo/widgets/walk_timeline.dart';
 import 'package:pawgo/screens/bookings_screen.dart';
 import 'package:pawgo/utils/walk_end_helper.dart';
 
@@ -1040,9 +1041,13 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                           child: Column(
                             children: [
                               _buildMapArea(),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: AppSpacing.md),
                               _buildWalkerInfo(),
-                              const SizedBox(height: 16),
+                              // US-014: Walk timeline
+                              WalkTimeline(
+                                currentStatus: _bookingStatus,
+                                layout: WalkTimelineLayout.vertical,
+                              ),
                               _buildStatsGrid(),
                               if (_isWalker) ...[
                                 const SizedBox(height: AppSpacing.sm),
