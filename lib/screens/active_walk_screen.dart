@@ -12,6 +12,7 @@ import 'package:pawgo/services/tracking_service.dart';
 import 'package:pawgo/services/booking_status_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
+import 'package:pawgo/services/chat_presence_tracker.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -252,7 +253,10 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
               }
             }
             final senderId = payload.newRecord['sender_id']?.toString();
-            if (senderId != currentUserId && mounted) {
+            // US-010: Don't increment badge while user is on the chat screen
+            if (senderId != currentUserId &&
+                mounted &&
+                !ChatPresenceTracker.isOnChat(_bookingId!)) {
               setState(() => _unreadChatCount++);
             }
           },
@@ -1577,16 +1581,6 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                 ],
               ),
             ),
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: AppColors.green50,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(PhosphorIcons.phone(), size: 18, color: AppColors.green600),
-            ),
-            const SizedBox(width: 8),
             GestureDetector(
               onTap: () {
                 setState(() => _unreadChatCount = 0);
@@ -1602,14 +1596,16 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                 clipBehavior: Clip.none,
                 children: [
                   Container(
-                    width: 40,
-                    height: 40,
+                    constraints: const BoxConstraints(
+                      minWidth: 48,
+                      minHeight: 48,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.blue50,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     child: Icon(PhosphorIcons.chatCircle(PhosphorIconsStyle.fill),
-                        size: 18, color: AppColors.blue600),
+                        size: 28, color: AppColors.blue600),
                   ),
                   if (_unreadChatCount > 0)
                     Positioned(
