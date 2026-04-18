@@ -1,10 +1,13 @@
-import ActivityKit
 import SwiftUI
+
+#if os(iOS)
+import ActivityKit
 
 /// ActivityAttributes for Pawgo walk Live Activities.
 ///
 /// Static attributes are set when the activity starts and do not change.
 /// ContentState contains the dynamic values that update throughout the walk.
+@available(iOS 16.1, *)
 struct PawgoWalkAttributes: ActivityAttributes {
     // MARK: - Static attributes (set once at start)
 
@@ -24,3 +27,4 @@ struct PawgoWalkAttributes: ActivityAttributes {
         var elapsedMinutes: Int
     }
 }
+#endif
