@@ -17,6 +17,7 @@ import 'package:pawgo/services/analytics_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/config/env.dart';
 import 'package:pawgo/widgets/review_bottom_sheet.dart';
+import 'package:pawgo/widgets/walk_photos_tab.dart';
 import 'package:pawgo/screens/bookings_screen.dart';
 import 'package:pawgo/utils/walk_end_helper.dart';
 
@@ -107,6 +108,8 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
   final List<Map<String, dynamic>> _walkPhotos = [];
   final ImagePicker _imagePicker = ImagePicker();
   bool _isUploadingPhoto = false;
+  bool _isLoadingPhotos = true;
+  bool _hasNewPhotos = false;
 
   // Auto-end walk timer
   int? _bookedDurationMinutes;
@@ -243,6 +246,10 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
             final mediaType = payload.newRecord['media_type']?.toString();
             if (mediaType == 'image' && mounted) {
               _fetchWalkPhotos();
+              // US-009: Show badge if owner is NOT on photos tab
+              if (_activeTab != 'photos') {
+                setState(() => _hasNewPhotos = true);
+              }
             }
             final senderId = payload.newRecord['sender_id']?.toString();
             if (senderId != currentUserId && mounted) {
@@ -423,9 +430,11 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
       setState(() {
         _walkPhotos.clear();
         _walkPhotos.addAll(List<Map<String, dynamic>>.from(data));
+        _isLoadingPhotos = false;
       });
     } catch (e) {
       debugPrint('Failed to fetch walk photos: $e');
+      if (mounted) setState(() => _isLoadingPhotos = false);
     }
   }
 
@@ -1748,11 +1757,15 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
               onTap: () => setState(() => _activeTab = 'updates'),
             ),
             const SizedBox(width: 6),
-            _TabButton(
+            WalkPhotosTabButton(
               label: 'Photos',
               icon: PhosphorIcons.camera(),
               isSelected: _activeTab == 'photos',
-              onTap: () => setState(() => _activeTab = 'photos'),
+              hasNewPhotos: _hasNewPhotos,
+              onTap: () => setState(() {
+                _activeTab = 'photos';
+                _hasNewPhotos = false;
+              }),
             ),
             const SizedBox(width: 6),
             _TabButton(
@@ -1918,106 +1931,13 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
   }
 
   Widget _buildPhotosTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Walk Photos',
-              style: GoogleFonts.nunito(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            if (_isWalker)
-              GestureDetector(
-                onTap: _isUploadingPhoto ? null : _takeAndUploadPhoto,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: AppColors.orange500,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: _isUploadingPhoto
-                      ? const SizedBox(
-                          width: 18, height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(PhosphorIcons.camera(), size: 16, color: Colors.white),
-                            const SizedBox(width: 4),
-                            Text('Take Photo',
-                                style: GoogleFonts.nunito(
-                                    fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
-                          ],
-                        ),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        if (_walkPhotos.isEmpty)
-          GestureDetector(
-            onTap: _isWalker ? _takeAndUploadPhoto : null,
-            child: Center(
-              child: Column(
-                children: [
-                  Icon(PhosphorIcons.camera(),
-                      size: 48, color: AppColors.textTertiary.withValues(alpha: 0.5)),
-                  const SizedBox(height: 8),
-                  Text(
-                    _isWalker ? 'Tap to take a photo' : 'No photos yet',
-                    style: GoogleFonts.nunito(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          )
-        else
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-            ),
-            itemCount: _walkPhotos.length,
-            itemBuilder: (context, index) {
-              final photo = _walkPhotos[index];
-              final url = photo['media_url'] as String?;
-              if (url == null) return const SizedBox.shrink();
-              return GestureDetector(
-                onTap: () => _openFullScreenPhoto(url),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    url,
-                    fit: BoxFit.cover,
-                    headers: {'apikey': Env.current.supabaseAnonKey},
-                    errorBuilder: (_, __, ___) => Container(
-                      color: AppColors.surface,
-                      child: Center(
-                        child: Icon(PhosphorIcons.imageBroken(),
-                            size: 24, color: AppColors.textTertiary),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        const SizedBox(height: 16),
-      ],
+    return WalkPhotosTab(
+      photos: _walkPhotos,
+      isLoading: _isLoadingPhotos,
+      isWalker: _isWalker,
+      isUploadingPhoto: _isUploadingPhoto,
+      onTakePhoto: _takeAndUploadPhoto,
+      onPhotoTap: _openFullScreenPhoto,
     );
   }
 
