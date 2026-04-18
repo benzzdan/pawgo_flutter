@@ -37,6 +37,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
   RealtimeChannel? _bookingChannel;
   int _selectedTab = 0; // 0=Upcoming, 1=Active, 2=Completed
   String? _startingWalkId; // Booking ID currently being started (loading state)
+  bool _badgeSeen = false; // True once the user has viewed the Upcoming tab
 
   static const _upcomingStatuses = ['confirmed', 'walker_en_route'];
   static const _activeStatuses = ['walk_started'];
@@ -62,6 +63,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
   void initState() {
     super.initState();
     _selectedTab = widget.initialTab;
+    _badgeSeen = widget.initialTab == 0;
     if (widget.testBookings != null) {
       // Test mode: use injected data, skip Supabase
       _bookings = List<Map<String, dynamic>>.from(widget.testBookings!);
@@ -157,6 +159,10 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
           ),
           callback: (payload) {
             // New booking assigned — reload to get joined data
+            // Reset badge seen so user sees the new pending count
+            if (_selectedTab != 0) {
+              _badgeSeen = false;
+            }
             _loadWalkerBookings();
           },
         )
@@ -445,6 +451,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
 
   Widget _buildFilterTabs() {
     final tabs = ['Upcoming', 'Active', 'Completed'];
+    final pendingCount = _pendingBookings.length;
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
       child: Row(
@@ -452,7 +459,12 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
           final isSelected = _selectedTab == index;
           return Expanded(
             child: GestureDetector(
-              onTap: () => setState(() => _selectedTab = index),
+              onTap: () => setState(() {
+                _selectedTab = index;
+                if (index == 0) {
+                  _badgeSeen = true;
+                }
+              }),
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
@@ -460,14 +472,48 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Center(
-                  child: Text(
-                    tabs[index],
-                    style: GoogleFonts.nunito(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: isSelected ? Colors.white : AppColors.textSecondary,
-                    ),
-                  ),
+                  child: index == 0 && pendingCount > 0 && !_badgeSeen
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              tabs[index],
+                              style: GoogleFonts.nunito(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: isSelected ? Colors.white : AppColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.xs),
+                            Container(
+                              key: const Key('upcoming-tab-badge'),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.red500,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                '$pendingCount',
+                                style: GoogleFonts.nunito(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      : Text(
+                          tabs[index],
+                          style: GoogleFonts.nunito(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: isSelected ? Colors.white : AppColors.textSecondary,
+                          ),
+                        ),
                 ),
               ),
             ),
