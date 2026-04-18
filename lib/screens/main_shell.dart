@@ -14,6 +14,9 @@ import 'package:pawgo/screens/walker_chat_list_screen.dart';
 import 'package:pawgo/screens/profile_screen.dart';
 import 'package:pawgo/services/role_service.dart';
 import 'package:pawgo/widgets/review_bottom_sheet.dart';
+import 'package:pawgo/theme/app_theme.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -33,6 +36,8 @@ class MainShellState extends State<MainShell> {
   final _supabase = Supabase.instance.client;
   Timer? _unreadPollTimer;
   RealtimeChannel? _walkCompletionChannel;
+  RealtimeChannel? _reviewNotificationChannel;
+  String? _walkerIdForReviewSub;
 
   final _ownerScreens = const [
     HomeScreen(),
@@ -54,6 +59,7 @@ class MainShellState extends State<MainShell> {
     _roleService.activeRole.addListener(_onRoleChanged);
     _setupUnreadTracking();
     _subscribeToWalkCompletion();
+    _setupReviewNotification();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final args = ModalRoute.of(context)?.settings.arguments;
       if (args is Map<String, dynamic>) {
@@ -74,6 +80,7 @@ class MainShellState extends State<MainShell> {
     _roleService.activeRole.removeListener(_onRoleChanged);
     _unreadPollTimer?.cancel();
     _walkCompletionChannel?.unsubscribe();
+    _reviewNotificationChannel?.unsubscribe();
     super.dispose();
   }
 
@@ -164,6 +171,105 @@ class MainShellState extends State<MainShell> {
         _onOwnerTabTap(2);
       }
     });
+  }
+
+  /// US-012: Subscribe to Realtime INSERT on reviews table for this walker.
+  /// When a new review arrives, show a SnackBar notification unless the
+  /// walker is already viewing the Earnings tab (index 1).
+  Future<void> _setupReviewNotification() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    try {
+      final walkerRes = await _supabase
+          .from('walkers')
+          .select('id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      if (walkerRes == null) return;
+      _walkerIdForReviewSub = walkerRes['id'] as String;
+      _subscribeToReviewInserts(_walkerIdForReviewSub!);
+    } catch (_) {
+      // Non-critical — notification just won't fire
+    }
+  }
+
+  void _subscribeToReviewInserts(String walkerId) {
+    _reviewNotificationChannel?.unsubscribe();
+    _reviewNotificationChannel =
+        _supabase.channel('walker_review_notify_$walkerId');
+    _reviewNotificationChannel!
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'reviews',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'walker_id',
+            value: walkerId,
+          ),
+          callback: (payload) {
+            if (!mounted) return;
+            // Suppress if walker is on Earnings tab (index 1)
+            if (_isWalkerMode && _walkerIndex == 1) return;
+            _showReviewNotification();
+          },
+        )
+        .subscribe();
+  }
+
+  void _showReviewNotification() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              PhosphorIcons.star(PhosphorIconsStyle.fill),
+              color: AppColors.amber500,
+              size: 20,
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                'You received a new review!',
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: AppColors.cacaoBrown,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        margin: const EdgeInsets.fromLTRB(
+          AppSpacing.md, 0, AppSpacing.md, AppSpacing.md,
+        ),
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: 'View',
+          textColor: AppColors.goldenPaw,
+          onPressed: () {
+            // Navigate to Earnings tab (walker index 1)
+            if (_isWalkerMode) {
+              _onWalkerTabTap(1);
+            } else {
+              // If in owner mode, switch to walker mode first then earnings
+              _roleService.switchRole();
+              Future.delayed(const Duration(milliseconds: 100), () {
+                if (mounted) _onWalkerTabTap(1);
+              });
+            }
+          },
+        ),
+      ),
+    );
   }
 
   void _onRoleChanged() {
