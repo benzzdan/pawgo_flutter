@@ -9,16 +9,27 @@ import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class WalkerBookingsScreen extends StatefulWidget {
-  const WalkerBookingsScreen({super.key, this.initialTab = 0});
+  const WalkerBookingsScreen({
+    super.key,
+    this.initialTab = 0,
+    this.testBookings,
+    this.testWalkerId,
+  });
   final int initialTab;
   static const int defaultInitialTab = 0;
+
+  /// Optional injected bookings for widget tests (bypasses Supabase fetch).
+  final List<Map<String, dynamic>>? testBookings;
+
+  /// Optional injected walker ID for widget tests.
+  final String? testWalkerId;
 
   @override
   State<WalkerBookingsScreen> createState() => _WalkerBookingsScreenState();
 }
 
 class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
-  final _supabase = Supabase.instance.client;
+  SupabaseClient get _supabase => Supabase.instance.client;
   List<Map<String, dynamic>> _bookings = [];
   bool _isLoading = true;
   String? _error;
@@ -51,7 +62,14 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
   void initState() {
     super.initState();
     _selectedTab = widget.initialTab;
-    _loadWalkerBookings();
+    if (widget.testBookings != null) {
+      // Test mode: use injected data, skip Supabase
+      _bookings = List<Map<String, dynamic>>.from(widget.testBookings!);
+      _walkerId = widget.testWalkerId;
+      _isLoading = false;
+    } else {
+      _loadWalkerBookings();
+    }
   }
 
   @override
@@ -281,6 +299,68 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
         e,
         screen: 'walker_bookings',
         fallbackMessage: 'Failed to end walk. Please try again.',
+      );
+    }
+  }
+
+  /// Cancel a confirmed booking (sets status to cancelled_by_walker).
+  Future<void> _cancelBooking(String bookingId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Cancel Booking?',
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+        content: Text(
+            'The owner will be notified that you cancelled this booking.',
+            style: GoogleFonts.nunito()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Keep',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.red500,
+            ),
+            child: Text('Yes, Cancel',
+                style: GoogleFonts.nunito(
+                    fontWeight: FontWeight.w700, color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await withRetry(() => _supabase
+          .from('bookings')
+          .update({'status': 'cancelled_by_walker'})
+          .eq('id', bookingId));
+
+      if (!mounted) return;
+
+      AnalyticsService.instance.capture('walker_booking_cancelled',
+          {'booking_id': bookingId});
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Booking cancelled',
+              style: GoogleFonts.nunito(
+                  fontWeight: FontWeight.w600, color: Colors.white)),
+          backgroundColor: AppColors.red500,
+        ),
+      );
+      _loadWalkerBookings();
+    } catch (e) {
+      if (!mounted) return;
+      ErrorHandler.instance.handleError(
+        context,
+        e,
+        screen: 'walker_bookings',
+        fallbackMessage: 'Failed to cancel booking. Please try again.',
       );
     }
   }
@@ -925,6 +1005,25 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
             ],
           ),
         ),
+      // Cancel Booking button for confirmed/en-route bookings
+      const SizedBox(height: AppSpacing.sm),
+      SizedBox(
+        height: 48,
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: () => _cancelBooking(bookingId),
+          icon: Icon(PhosphorIcons.xCircle(), size: 18),
+          label: Text('Cancel Booking',
+              style: GoogleFonts.nunito(
+                  fontSize: 15, fontWeight: FontWeight.w700)),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.red500,
+            side: const BorderSide(color: AppColors.red500, width: 1.5),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+      ),
       ],
       );
     } else if (status == 'walk_started') {
