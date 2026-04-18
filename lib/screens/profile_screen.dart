@@ -7,6 +7,7 @@ import 'package:pawgo/services/saved_address_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/mexican_state_picker_field.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -35,7 +36,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _labelController = TextEditingController();
   final _streetController = TextEditingController();
   final _cityController = TextEditingController();
-  final _stateController = TextEditingController();
+  String? _selectedState;
   final _zipController = TextEditingController();
 
   final _supabase = Supabase.instance.client;
@@ -62,7 +63,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _labelController.dispose();
     _streetController.dispose();
     _cityController.dispose();
-    _stateController.dispose();
     _zipController.dispose();
     super.dispose();
   }
@@ -87,7 +87,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _labelController.clear();
     _streetController.clear();
     _cityController.clear();
-    _stateController.clear();
+    _selectedState = null;
     _zipController.clear();
     _editingAddress = null;
   }
@@ -96,7 +96,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _labelController.text = addr.label;
     _streetController.text = addr.streetAddress;
     _cityController.text = addr.city ?? '';
-    _stateController.text = addr.state ?? '';
+    _selectedState = addr.state;
     _zipController.text = addr.zipCode ?? '';
     setState(() {
       _editingAddress = addr;
@@ -120,9 +120,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           city: _cityController.text.trim().isEmpty
               ? null
               : _cityController.text.trim(),
-          state: _stateController.text.trim().isEmpty
-              ? null
-              : _stateController.text.trim(),
+          state: _selectedState,
           zipCode: _zipController.text.trim().isEmpty
               ? null
               : _zipController.text.trim(),
@@ -135,9 +133,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           city: _cityController.text.trim().isEmpty
               ? null
               : _cityController.text.trim(),
-          state: _stateController.text.trim().isEmpty
-              ? null
-              : _stateController.text.trim(),
+          state: _selectedState,
           zipCode: _zipController.text.trim().isEmpty
               ? null
               : _zipController.text.trim(),
@@ -548,9 +544,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _FormField(hint: 'City', controller: _cityController)),
               const SizedBox(width: 8),
               SizedBox(
-                width: 80,
-                child:
-                    _FormField(hint: 'State', controller: _stateController),
+                width: 100,
+                child: MexicanStatePickerField(
+                  selectedState: _selectedState,
+                  onStateSelected: (s) =>
+                      setState(() => _selectedState = s),
+                ),
               ),
               const SizedBox(width: 8),
               SizedBox(
