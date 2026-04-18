@@ -18,6 +18,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/config/env.dart';
 import 'package:pawgo/widgets/review_bottom_sheet.dart';
 import 'package:pawgo/screens/bookings_screen.dart';
+import 'package:pawgo/utils/walk_end_helper.dart';
 
 class ActiveWalkScreen extends StatefulWidget {
   const ActiveWalkScreen({
@@ -805,6 +806,23 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
   Future<void> _endWalk() async {
     if (_bookingId == null) return;
 
+    // US-007: Evaluate early-end conditions before confirming
+    if (_walkStartedAt != null && _bookedDurationMinutes != null) {
+      final warning = evaluateWalkEnd(
+        walkStartedAt: _walkStartedAt!,
+        bookedDurationMinutes: _bookedDurationMinutes!,
+      );
+
+      if (!warning.shouldProceedWithoutWarning) {
+        final confirmed = await _showEarlyEndWarningModal(warning);
+        if (confirmed != true || !mounted) return;
+        // User chose "End Anyway" — proceed to end walk
+        await _performEndWalk(earlyEnd: true, warning: warning);
+        return;
+      }
+    }
+
+    // Normal end (within scheduled window) — show standard confirmation
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -831,10 +849,123 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     );
 
     if (confirm != true || !mounted) return;
+    await _performEndWalk(earlyEnd: false);
+  }
 
+  /// US-007: Shows the appropriate early-end warning modal.
+  /// Returns true if the walker chose "End Anyway".
+  Future<bool?> _showEarlyEndWarningModal(WalkEndWarning warning) {
+    final String title;
+    final String message;
+
+    switch (warning.type) {
+      case WalkEndWarningType.earlyEnd:
+        title = 'Ending Early';
+        message =
+            'You are ending ${warning.minutesRemaining} minutes early. '
+            'Your pay will be prorated to the actual time walked.';
+      case WalkEndWarningType.veryShortWalk:
+        title = 'Very Short Walk';
+        message =
+            'You ended the walk in less than 10 minutes. '
+            'The owner will receive a full refund. Are you sure?';
+      case WalkEndWarningType.none:
+        // Should not reach here, but handle gracefully
+        return Future.value(true);
+    }
+
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: Text(title,
+            style: GoogleFonts.nunito(
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+            )),
+        content: Text(message,
+            style: GoogleFonts.nunito(
+              fontSize: 15,
+              height: 1.4,
+            )),
+        actionsPadding: const EdgeInsets.fromLTRB(
+          AppSpacing.md, 0, AppSpacing.md, AppSpacing.md,
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.red500,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+              child: Text('End Anyway',
+                  style: GoogleFonts.nunito(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  )),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: OutlinedButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.cacaoBrown,
+                side: const BorderSide(color: AppColors.warmCaramel, width: 1.5),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+              child: Text('Continue Walk',
+                  style: GoogleFonts.nunito(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  )),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Shared walk-ending logic — calls edge function and records actual duration.
+  Future<void> _performEndWalk({
+    required bool earlyEnd,
+    WalkEndWarning? warning,
+  }) async {
     setState(() => _endingWalk = true);
 
     try {
+      // US-007: Record actual_end_time and actual_duration_minutes
+      final now = DateTime.now().toUtc();
+      final actualDuration = _walkStartedAt != null
+          ? now.difference(_walkStartedAt!).inMinutes
+          : null;
+
+      // Update booking with actual end data before calling edge function
+      if (earlyEnd && _walkStartedAt != null) {
+        await Supabase.instance.client
+            .from('bookings')
+            .update({
+              'actual_end_time': now.toIso8601String(),
+              'actual_duration_minutes': actualDuration,
+            })
+            .eq('id', _bookingId!);
+      }
+
       final res = await withRetry(() =>
           Supabase.instance.client.functions.invoke(
             'end-walk',
