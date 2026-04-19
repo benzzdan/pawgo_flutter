@@ -5,6 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/analytics_service.dart';
+import 'package:pawgo/services/booking_status_service.dart';
+import 'package:pawgo/utils/walk_request_cancellation.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
@@ -27,8 +29,11 @@ class _WalkRequestScreenState extends State<WalkRequestScreen> {
   String? _error;
   bool _isResponding = false;
   bool _isExpired = false;
+  bool _cancelled = false;
   Timer? _countdownTimer;
   Duration _timeRemaining = Duration.zero;
+  BookingStatusService? _statusService;
+  StreamSubscription<BookingStatusUpdate>? _statusSub;
 
   @override
   void didChangeDependencies() {
@@ -41,6 +46,8 @@ class _WalkRequestScreenState extends State<WalkRequestScreen> {
   @override
   void dispose() {
     _countdownTimer?.cancel();
+    _statusSub?.cancel();
+    _statusService?.dispose();
     super.dispose();
   }
 
@@ -50,7 +57,7 @@ class _WalkRequestScreenState extends State<WalkRequestScreen> {
     final testBooking = args?['_test_booking'] as Map<String, dynamic>?;
 
     if (testBooking != null) {
-      // Test mode: use injected data
+      // Test mode: use injected data, skip Realtime subscription
       setState(() {
         _booking = testBooking;
         _isLoading = false;
@@ -84,6 +91,7 @@ class _WalkRequestScreenState extends State<WalkRequestScreen> {
         _isLoading = false;
       });
       _startCountdown();
+      _subscribeToCancellation(bookingId);
     } catch (e) {
       if (!mounted) return;
       final appError = AppError.from(e);
@@ -97,6 +105,47 @@ class _WalkRequestScreenState extends State<WalkRequestScreen> {
         _error = appError.isNetworkError
             ? 'No internet connection. Please check your network.'
             : 'Failed to load walk request';
+      });
+    }
+  }
+
+  void _subscribeToCancellation(String? bookingId) {
+    if (bookingId == null) return;
+    _statusService = BookingStatusService();
+    _statusService!.subscribeToBooking(bookingId);
+    _statusSub = _statusService!.statusStream.listen(_onBookingStatusUpdate);
+  }
+
+  void _onBookingStatusUpdate(BookingStatusUpdate update) {
+    if (!mounted) return;
+    if (shouldAutoExitOnCancellation(
+      newStatus: update.newStatus,
+      isWalkerScreen: true,
+      alreadyCancelled: _cancelled,
+    )) {
+      _cancelled = true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'The owner canceled this walk request',
+            style: GoogleFonts.nunito(
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+          backgroundColor: AppColors.red500,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(AppSpacing.md),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
       });
     }
   }
