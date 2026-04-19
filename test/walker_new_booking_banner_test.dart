@@ -115,33 +115,21 @@ void main() {
     });
 
     group('Suppression logic', () {
-      test('banner is suppressed when walker is on Upcoming tab in walker mode',
-          () {
-        const currentWalkerTabIndex = 0;
-        const upcomingTabIndex = 0;
-        const isWalkerMode = true;
+      // No tab-based suppression: the banner always shows when a booking
+      // arrives. The US-006 badge handles the Upcoming sub-tab case.
+      // Suppression by bottom-nav tab was removed because _walkerIndex == 0
+      // covers the entire WalkerBookings screen (including the Active sub-tab),
+      // which means walkers on the Active sub-tab would never see the banner.
 
-        final shouldSuppress =
-            isWalkerMode && currentWalkerTabIndex == upcomingTabIndex;
-        expect(shouldSuppress, isTrue,
-            reason:
-                'Banner must be suppressed when walker is already on Upcoming tab');
-      });
-
-      test('banner is shown when walker is on Earnings tab', () {
-        const currentWalkerTabIndex = 1;
-        const upcomingTabIndex = 0;
-        const isWalkerMode = true;
-
-        final shouldSuppress =
-            isWalkerMode && currentWalkerTabIndex == upcomingTabIndex;
+      test('banner always shows in walker mode regardless of tab', () {
+        // shouldSuppress is always false — no tab suppression
+        const shouldSuppress = false;
         expect(shouldSuppress, isFalse,
-            reason: 'Banner must appear when walker is on a different tab');
+            reason: 'Banner must appear on any walker tab');
       });
 
-      test('banner is shown when user is in owner mode', () {
-        const isWalkerMode = false;
-        final shouldSuppress = isWalkerMode;
+      test('banner always shows in owner mode', () {
+        const shouldSuppress = false;
         expect(shouldSuppress, isFalse,
             reason: 'Banner must appear when user is in owner mode');
       });

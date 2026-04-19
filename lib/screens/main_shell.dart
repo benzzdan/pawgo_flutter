@@ -215,8 +215,6 @@ class MainShellState extends State<MainShell> {
           ),
           callback: (payload) {
             if (!mounted) return;
-            // Suppress if walker is already viewing the Upcoming tab (tab 0)
-            if (_isWalkerMode && _walkerIndex == 0) return;
             setState(() {
               _pendingBookingNotification = payload.newRecord;
             });
