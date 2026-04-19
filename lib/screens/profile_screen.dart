@@ -4,6 +4,7 @@ import 'package:pawgo/models/mock_data.dart' hide SavedAddress;
 import 'package:pawgo/services/role_service.dart';
 import 'package:pawgo/services/theme_service.dart';
 import 'package:pawgo/services/saved_address_service.dart';
+import 'package:pawgo/validators/profile_validator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -25,6 +26,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _email;
   String? _phone;
   bool _profileLoading = true;
+
+  // Profile editing state
+  bool _isEditingProfile = false;
+  bool _profileSaving = false;
+  String? _nameError;
+  final _nameController = TextEditingController();
 
   // Saved addresses
   List<SavedAddress> _addresses = [];
@@ -59,6 +66,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _roleService.role.removeListener(_onRoleChanged);
     _roleService.activeRole.removeListener(_onRoleChanged);
     _roleService.isWalker.removeListener(_onRoleChanged);
+    _nameController.dispose();
     _labelController.dispose();
     _streetController.dispose();
     _cityController.dispose();
@@ -183,6 +191,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (userId == null) return;
     await _addressService.setDefault(addr.id, userId);
     _loadAddresses();
+  }
+
+  void _enterEditMode() {
+    _nameController.text = _fullName ?? '';
+    setState(() {
+      _isEditingProfile = true;
+      _nameError = null;
+    });
+  }
+
+  void _cancelEditMode() {
+    setState(() {
+      _isEditingProfile = false;
+      _nameError = null;
+    });
+  }
+
+  Future<void> _saveProfile() async {
+    final nameError = ProfileValidator.validateFullName(_nameController.text);
+    if (nameError != null) {
+      setState(() => _nameError = nameError);
+      return;
+    }
+
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    setState(() {
+      _profileSaving = true;
+      _nameError = null;
+    });
+
+    try {
+      await _supabase
+          .from('users')
+          .update({'full_name': _nameController.text.trim()})
+          .eq('id', userId);
+
+      if (!mounted) return;
+      setState(() {
+        _fullName = _nameController.text.trim();
+        _isEditingProfile = false;
+        _profileSaving = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Profile updated',
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: AppColors.green600,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.button),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _profileSaving = false;
+        _nameError = 'Failed to save. Please try again.';
+      });
+    }
   }
 
   void _onRoleChanged() {
@@ -347,48 +419,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ),
                               ),
                             )
-                          : Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _fullName ?? _email ?? '',
-                                  style: GoogleFonts.nunito(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w900,
-                                    color: AppColors.textPrimary,
-                                  ),
+                          : _isEditingProfile
+                              ? _buildEditableProfileFields()
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _fullName ?? _email ?? '',
+                                      style: GoogleFonts.nunito(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w900,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    if (_email != null)
+                                      Text(
+                                        _email!,
+                                        style: GoogleFonts.nunito(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.textSecondary,
+                                        ),
+                                      ),
+                                    if (_phone != null)
+                                      Text(
+                                        _phone!,
+                                        style: GoogleFonts.nunito(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.textSecondary,
+                                        ),
+                                      ),
+                                  ],
                                 ),
-                                const SizedBox(height: 2),
-                                if (_email != null)
-                                  Text(
-                                    _email!,
-                                    style: GoogleFonts.nunito(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                if (_phone != null)
-                                  Text(
-                                    _phone!,
-                                    style: GoogleFonts.nunito(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                              ],
-                            ),
                     ),
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(12),
+                    GestureDetector(
+                      onTap: _profileLoading
+                          ? null
+                          : _isEditingProfile
+                              ? _cancelEditMode
+                              : _enterEditMode,
+                      child: Semantics(
+                        label: _isEditingProfile
+                            ? 'Cancel editing profile'
+                            : 'Edit profile',
+                        button: true,
+                        child: Container(
+                          width: 40,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            _isEditingProfile
+                                ? PhosphorIcons.x()
+                                : PhosphorIcons.pencilSimple(),
+                            size: 16,
+                            color: _isEditingProfile
+                                ? AppColors.red500
+                                : AppColors.textSecondary,
+                          ),
+                        ),
                       ),
-                      child: Icon(PhosphorIcons.pencilSimple(),
-                          size: 16, color: AppColors.textSecondary),
                     ),
                   ],
                 ),
@@ -397,6 +491,102 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildEditableProfileFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Name field
+        SizedBox(
+          height: 40,
+          child: TextField(
+            controller: _nameController,
+            enabled: !_profileSaving,
+            autofocus: true,
+            onChanged: (_) {
+              if (_nameError != null) {
+                setState(() => _nameError = null);
+              }
+            },
+            decoration: InputDecoration(
+              hintText: 'Full name',
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.sm,
+              ),
+              filled: true,
+              fillColor: AppColors.surface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadius.input),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadius.input),
+                borderSide: const BorderSide(
+                  color: AppColors.orange400,
+                  width: 1.5,
+                ),
+              ),
+              errorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadius.input),
+                borderSide: const BorderSide(
+                  color: AppColors.red500,
+                  width: 1.5,
+                ),
+              ),
+            ),
+            style: GoogleFonts.nunito(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ),
+        if (_nameError != null) ...[
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            _nameError!,
+            style: GoogleFonts.nunito(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppColors.red500,
+            ),
+          ),
+        ],
+        const SizedBox(height: AppSpacing.sm),
+        // Save button
+        SizedBox(
+          height: 36,
+          child: ElevatedButton(
+            onPressed: _profileSaving ? null : _saveProfile,
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 36),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.button),
+              ),
+            ),
+            child: _profileSaving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : Text(
+                    'Save',
+                    style: GoogleFonts.nunito(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+          ),
+        ),
+      ],
     );
   }
 
