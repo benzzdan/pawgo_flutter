@@ -22,6 +22,7 @@ import 'package:pawgo/widgets/walk_photos_tab.dart';
 import 'package:pawgo/widgets/walk_timeline.dart';
 import 'package:pawgo/screens/bookings_screen.dart';
 import 'package:pawgo/utils/walk_end_helper.dart';
+import 'package:pawgo/utils/walk_nav_helper.dart';
 import 'package:pawgo/services/live_activity_service.dart';
 import 'package:pawgo/utils/live_activity_bridge.dart';
 import 'package:pawgo/utils/home_widget_bridge.dart';
@@ -490,12 +491,11 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
               );
             }
             if (status == 'walk_completed' && mounted) {
-              if (_isWalker) {
-                Navigator.pushReplacementNamed(
-                  context,
-                  '/walker-bookings',
-                  arguments: {'initialTab': 0},
-                );
+              if (shouldPopOnWalkCompletion(isWalker: _isWalker)) {
+                // Pop back to the MainShell (which hosts the bottom nav bar).
+                // pushReplacementNamed('/walker-bookings') was used before but
+                // that route is standalone (no MainShell), losing the nav bar.
+                Navigator.pop(context);
               } else {
                 _showReviewSheet();
               }
