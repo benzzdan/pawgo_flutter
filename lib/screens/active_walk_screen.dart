@@ -12,12 +12,21 @@ import 'package:pawgo/services/tracking_service.dart';
 import 'package:pawgo/services/booking_status_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
+import 'package:pawgo/services/chat_presence_tracker.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/config/env.dart';
 import 'package:pawgo/widgets/review_bottom_sheet.dart';
+import 'package:pawgo/widgets/walk_photos_tab.dart';
+import 'package:pawgo/widgets/walk_timeline.dart';
 import 'package:pawgo/screens/bookings_screen.dart';
+import 'package:pawgo/utils/walk_end_helper.dart';
+import 'package:pawgo/utils/walk_nav_helper.dart';
+import 'package:pawgo/services/live_activity_service.dart';
+import 'package:pawgo/utils/live_activity_bridge.dart';
+import 'package:pawgo/utils/home_widget_bridge.dart';
+import 'package:home_widget/home_widget.dart';
 
 class ActiveWalkScreen extends StatefulWidget {
   const ActiveWalkScreen({
@@ -106,6 +115,14 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
   final List<Map<String, dynamic>> _walkPhotos = [];
   final ImagePicker _imagePicker = ImagePicker();
   bool _isUploadingPhoto = false;
+  bool _isLoadingPhotos = true;
+  bool _hasNewPhotos = false;
+
+  // iOS Live Activity bridge (US-016/017)
+  late final LiveActivityBridge _liveActivityBridge;
+
+  // Android Home Widget bridge (US-018)
+  late final HomeWidgetBridge _homeWidgetBridge;
 
   // Auto-end walk timer
   int? _bookedDurationMinutes;
@@ -128,6 +145,36 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     _trackingService = widget.trackingService ?? TrackingService();
     _bookingStatusService =
         widget.bookingStatusService ?? BookingStatusService();
+
+    // US-017: Initialize Live Activity bridge (iOS only)
+    bool isIOSPlatform;
+    try {
+      isIOSPlatform = Platform.isIOS;
+    } catch (_) {
+      isIOSPlatform = false;
+    }
+    _liveActivityBridge = LiveActivityBridge(
+      service: LiveActivityService(),
+      isPlatformSupported: isIOSPlatform,
+    );
+
+    // US-018: Initialize Android Home Widget bridge
+    _homeWidgetBridge = HomeWidgetBridge(
+      saveWidgetData: (String key, dynamic value) async {
+        if (value is int) {
+          await HomeWidget.saveWidgetData<int>(key, value);
+        } else {
+          await HomeWidget.saveWidgetData<String>(key, value.toString());
+        }
+      },
+      updateWidget: () async {
+        await HomeWidget.updateWidget(
+          name: 'WalkStatusWidget',
+          iOSName: 'WalkStatusWidget',
+          androidName: 'WalkStatusWidget',
+        );
+      },
+    );
   }
 
   @override
@@ -217,6 +264,19 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
         _bookingStatusService.statusStream.listen((update) {
       if (mounted) {
         setState(() => _bookingStatus = update.newStatus);
+        // US-017: Notify Live Activity bridge of status change
+        _liveActivityBridge.onBookingStatusChanged(
+          newStatus: update.newStatus,
+          walkerName: _walkerName ?? 'Walker',
+          dogName: _dogName ?? 'Dog',
+        );
+        // US-018: Update Android Home Widget
+        _homeWidgetBridge.onBookingStatusChanged(
+          newStatus: update.newStatus,
+          walkerName: _walkerName ?? 'Walker',
+          dogName: _dogName ?? 'Dog',
+          elapsedMinutes: _elapsedMinutes,
+        );
       }
     });
     _bookingStatusService.subscribeToBooking(bookingId);
@@ -242,9 +302,16 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
             final mediaType = payload.newRecord['media_type']?.toString();
             if (mediaType == 'image' && mounted) {
               _fetchWalkPhotos();
+              // US-009: Show badge if owner is NOT on photos tab
+              if (_activeTab != 'photos') {
+                setState(() => _hasNewPhotos = true);
+              }
             }
             final senderId = payload.newRecord['sender_id']?.toString();
-            if (senderId != currentUserId && mounted) {
+            // US-010: Don't increment badge while user is on the chat screen
+            if (senderId != currentUserId &&
+                mounted &&
+                !ChatPresenceTracker.isOnChat(_bookingId!)) {
               setState(() => _unreadChatCount++);
             }
           },
@@ -275,6 +342,8 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     if (!_isWalker) {
       _clearOwnerPresence();
     }
+    // US-017: Clean up Live Activity bridge
+    _liveActivityBridge.dispose();
     // Note: GPS broadcast is NOT stopped here intentionally.
     // The service is a singleton that continues in the background
     // so GPS keeps broadcasting even if the user navigates away.
@@ -322,9 +391,32 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
       // Subscribe to booking status changes (for review prompt on completion)
       _subscribeToBookingStatus();
 
+      // US-017: Start Live Activity if walk is already in progress
+      final status = data['status'] as String?;
+      if (status == 'walker_en_route' || status == 'walk_started') {
+        _liveActivityBridge.onBookingStatusChanged(
+          newStatus: status!,
+          walkerName: _walkerName ?? 'Walker',
+          dogName: _dogName ?? 'Dog',
+        );
+        if (status == 'walk_started' && _elapsedMinutes > 0) {
+          _liveActivityBridge.setElapsedMinutes(_elapsedMinutes);
+          _liveActivityBridge.setWalkStartedAt(_walkStartedAt);
+        }
+      }
+
+      // US-018: Update Android Home Widget with current status
+      if (status != null) {
+        _homeWidgetBridge.onBookingStatusChanged(
+          newStatus: status,
+          walkerName: _walkerName ?? 'Walker',
+          dogName: _dogName ?? 'Dog',
+          elapsedMinutes: _elapsedMinutes,
+        );
+      }
+
       // US-015: Owner monitoring presence
       _walkerUserId = walkerUserId;
-      final status = data['status'] as String?;
       if (status == 'walk_started') {
         if (!isWalker) {
           // Owner side: start heartbeat so walker knows we're watching
@@ -383,13 +475,27 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
           ),
           callback: (payload) {
             final status = payload.newRecord['status'] as String?;
+            // US-017: End Live Activity on walk completion
+            if (status != null) {
+              _liveActivityBridge.onBookingStatusChanged(
+                newStatus: status,
+                walkerName: _walkerName ?? 'Walker',
+                dogName: _dogName ?? 'Dog',
+              );
+              // US-018: Update Android Home Widget
+              _homeWidgetBridge.onBookingStatusChanged(
+                newStatus: status,
+                walkerName: _walkerName ?? 'Walker',
+                dogName: _dogName ?? 'Dog',
+                elapsedMinutes: _elapsedMinutes,
+              );
+            }
             if (status == 'walk_completed' && mounted) {
-              if (_isWalker) {
-                Navigator.pushReplacementNamed(
-                  context,
-                  '/walker-bookings',
-                  arguments: {'initialTab': 0},
-                );
+              if (shouldPopOnWalkCompletion(isWalker: _isWalker)) {
+                // Pop back to the MainShell (which hosts the bottom nav bar).
+                // pushReplacementNamed('/walker-bookings') was used before but
+                // that route is standalone (no MainShell), losing the nav bar.
+                Navigator.pop(context);
               } else {
                 _showReviewSheet();
               }
@@ -404,6 +510,8 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     _elapsedTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (!mounted) return;
       setState(() => _elapsedMinutes++);
+      // US-018: Push elapsed time to Android Home Widget
+      _homeWidgetBridge.updateElapsedTime(elapsedMinutes: _elapsedMinutes);
     });
   }
 
@@ -422,9 +530,11 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
       setState(() {
         _walkPhotos.clear();
         _walkPhotos.addAll(List<Map<String, dynamic>>.from(data));
+        _isLoadingPhotos = false;
       });
     } catch (e) {
       debugPrint('Failed to fetch walk photos: $e');
+      if (mounted) setState(() => _isLoadingPhotos = false);
     }
   }
 
@@ -805,6 +915,23 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
   Future<void> _endWalk() async {
     if (_bookingId == null) return;
 
+    // US-007: Evaluate early-end conditions before confirming
+    if (_walkStartedAt != null && _bookedDurationMinutes != null) {
+      final warning = evaluateWalkEnd(
+        walkStartedAt: _walkStartedAt!,
+        bookedDurationMinutes: _bookedDurationMinutes!,
+      );
+
+      if (!warning.shouldProceedWithoutWarning) {
+        final confirmed = await _showEarlyEndWarningModal(warning);
+        if (confirmed != true || !mounted) return;
+        // User chose "End Anyway" — proceed to end walk
+        await _performEndWalk(earlyEnd: true, warning: warning);
+        return;
+      }
+    }
+
+    // Normal end (within scheduled window) — show standard confirmation
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -831,10 +958,123 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     );
 
     if (confirm != true || !mounted) return;
+    await _performEndWalk(earlyEnd: false);
+  }
 
+  /// US-007: Shows the appropriate early-end warning modal.
+  /// Returns true if the walker chose "End Anyway".
+  Future<bool?> _showEarlyEndWarningModal(WalkEndWarning warning) {
+    final String title;
+    final String message;
+
+    switch (warning.type) {
+      case WalkEndWarningType.earlyEnd:
+        title = 'Ending Early';
+        message =
+            'You are ending ${warning.minutesRemaining} minutes early. '
+            'Your pay will be prorated to the actual time walked.';
+      case WalkEndWarningType.veryShortWalk:
+        title = 'Very Short Walk';
+        message =
+            'You ended the walk in less than 10 minutes. '
+            'The owner will receive a full refund. Are you sure?';
+      case WalkEndWarningType.none:
+        // Should not reach here, but handle gracefully
+        return Future.value(true);
+    }
+
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: Text(title,
+            style: GoogleFonts.nunito(
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+            )),
+        content: Text(message,
+            style: GoogleFonts.nunito(
+              fontSize: 15,
+              height: 1.4,
+            )),
+        actionsPadding: const EdgeInsets.fromLTRB(
+          AppSpacing.md, 0, AppSpacing.md, AppSpacing.md,
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.red500,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+              child: Text('End Anyway',
+                  style: GoogleFonts.nunito(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  )),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: OutlinedButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.cacaoBrown,
+                side: const BorderSide(color: AppColors.warmCaramel, width: 1.5),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+              child: Text('Continue Walk',
+                  style: GoogleFonts.nunito(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  )),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Shared walk-ending logic — calls edge function and records actual duration.
+  Future<void> _performEndWalk({
+    required bool earlyEnd,
+    WalkEndWarning? warning,
+  }) async {
     setState(() => _endingWalk = true);
 
     try {
+      // US-007: Record actual_end_time and actual_duration_minutes
+      final now = DateTime.now().toUtc();
+      final actualDuration = _walkStartedAt != null
+          ? now.difference(_walkStartedAt!).inMinutes
+          : null;
+
+      // Update booking with actual end data before calling edge function
+      if (earlyEnd && _walkStartedAt != null) {
+        await Supabase.instance.client
+            .from('bookings')
+            .update({
+              'actual_end_time': now.toIso8601String(),
+              'actual_duration_minutes': actualDuration,
+            })
+            .eq('id', _bookingId!);
+      }
+
       final res = await withRetry(() =>
           Supabase.instance.client.functions.invoke(
             'end-walk',
@@ -896,9 +1136,13 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                           child: Column(
                             children: [
                               _buildMapArea(),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: AppSpacing.md),
                               _buildWalkerInfo(),
-                              const SizedBox(height: 16),
+                              // US-014: Walk timeline
+                              WalkTimeline(
+                                currentStatus: _bookingStatus,
+                                layout: WalkTimelineLayout.vertical,
+                              ),
                               _buildStatsGrid(),
                               if (_isWalker) ...[
                                 const SizedBox(height: AppSpacing.sm),
@@ -1437,16 +1681,6 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                 ],
               ),
             ),
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: AppColors.green50,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(PhosphorIcons.phone(), size: 18, color: AppColors.green600),
-            ),
-            const SizedBox(width: 8),
             GestureDetector(
               onTap: () {
                 setState(() => _unreadChatCount = 0);
@@ -1462,14 +1696,16 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                 clipBehavior: Clip.none,
                 children: [
                   Container(
-                    width: 40,
-                    height: 40,
+                    constraints: const BoxConstraints(
+                      minWidth: 48,
+                      minHeight: 48,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.blue50,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     child: Icon(PhosphorIcons.chatCircle(PhosphorIconsStyle.fill),
-                        size: 18, color: AppColors.blue600),
+                        size: 28, color: AppColors.blue600),
                   ),
                   if (_unreadChatCount > 0)
                     Positioned(
@@ -1617,11 +1853,15 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
               onTap: () => setState(() => _activeTab = 'updates'),
             ),
             const SizedBox(width: 6),
-            _TabButton(
+            WalkPhotosTabButton(
               label: 'Photos',
               icon: PhosphorIcons.camera(),
               isSelected: _activeTab == 'photos',
-              onTap: () => setState(() => _activeTab = 'photos'),
+              hasNewPhotos: _hasNewPhotos,
+              onTap: () => setState(() {
+                _activeTab = 'photos';
+                _hasNewPhotos = false;
+              }),
             ),
             const SizedBox(width: 6),
             _TabButton(
@@ -1787,106 +2027,13 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
   }
 
   Widget _buildPhotosTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Walk Photos',
-              style: GoogleFonts.nunito(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            if (_isWalker)
-              GestureDetector(
-                onTap: _isUploadingPhoto ? null : _takeAndUploadPhoto,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: AppColors.orange500,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: _isUploadingPhoto
-                      ? const SizedBox(
-                          width: 18, height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(PhosphorIcons.camera(), size: 16, color: Colors.white),
-                            const SizedBox(width: 4),
-                            Text('Take Photo',
-                                style: GoogleFonts.nunito(
-                                    fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
-                          ],
-                        ),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        if (_walkPhotos.isEmpty)
-          GestureDetector(
-            onTap: _isWalker ? _takeAndUploadPhoto : null,
-            child: Center(
-              child: Column(
-                children: [
-                  Icon(PhosphorIcons.camera(),
-                      size: 48, color: AppColors.textTertiary.withValues(alpha: 0.5)),
-                  const SizedBox(height: 8),
-                  Text(
-                    _isWalker ? 'Tap to take a photo' : 'No photos yet',
-                    style: GoogleFonts.nunito(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          )
-        else
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-            ),
-            itemCount: _walkPhotos.length,
-            itemBuilder: (context, index) {
-              final photo = _walkPhotos[index];
-              final url = photo['media_url'] as String?;
-              if (url == null) return const SizedBox.shrink();
-              return GestureDetector(
-                onTap: () => _openFullScreenPhoto(url),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    url,
-                    fit: BoxFit.cover,
-                    headers: {'apikey': Env.current.supabaseAnonKey},
-                    errorBuilder: (_, __, ___) => Container(
-                      color: AppColors.surface,
-                      child: Center(
-                        child: Icon(PhosphorIcons.imageBroken(),
-                            size: 24, color: AppColors.textTertiary),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        const SizedBox(height: 16),
-      ],
+    return WalkPhotosTab(
+      photos: _walkPhotos,
+      isLoading: _isLoadingPhotos,
+      isWalker: _isWalker,
+      isUploadingPhoto: _isUploadingPhoto,
+      onTakePhoto: _takeAndUploadPhoto,
+      onPhotoTap: _openFullScreenPhoto,
     );
   }
 

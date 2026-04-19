@@ -4,6 +4,7 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/review_list_bottom_sheet.dart';
 
 class WalkerEarningsScreen extends StatefulWidget {
   const WalkerEarningsScreen({super.key});
@@ -19,7 +20,9 @@ class _WalkerEarningsScreenState extends State<WalkerEarningsScreen> {
   double _totalEarnings = 0;
   int _completedWalks = 0;
   double _avgRating = 0;
+  int _reviewCount = 0;
   List<Map<String, dynamic>> _completedBookings = [];
+  List<Map<String, dynamic>> _reviews = [];
 
   @override
   void initState() {
@@ -60,15 +63,23 @@ class _WalkerEarningsScreenState extends State<WalkerEarningsScreen> {
       final avgRating = (walkerRes['avg_rating'] as num?)?.toDouble() ?? 0.0;
       final totalWalks = (walkerRes['total_walks'] as num?)?.toInt() ?? 0;
 
-      // Fetch completed bookings
-      final bookings = await withRetry(() => _supabase
+      // Fetch completed bookings and reviews in parallel
+      final bookingsFuture = withRetry(() => _supabase
           .from('bookings')
           .select('*, dogs(name, breed), users!bookings_owner_id_fkey(full_name, avatar_url)')
           .eq('walker_id', walkerId)
           .eq('status', 'walk_completed')
           .order('completed_at', ascending: false));
 
-      final bookingsList = List<Map<String, dynamic>>.from(bookings);
+      final reviewsFuture = withRetry(() => _supabase
+          .from('reviews')
+          .select('rating, comment, created_at, users!reviews_reviewer_id_fkey(full_name)')
+          .eq('walker_id', walkerId)
+          .order('created_at', ascending: false));
+
+      final results = await Future.wait([bookingsFuture, reviewsFuture]);
+      final bookingsList = List<Map<String, dynamic>>.from(results[0]);
+      final reviewsList = List<Map<String, dynamic>>.from(results[1]);
 
       // Calculate total earnings (total_price_mxn - commission_mxn)
       double earnings = 0;
@@ -78,10 +89,22 @@ class _WalkerEarningsScreenState extends State<WalkerEarningsScreen> {
         earnings += total - commission;
       }
 
+      // Compute average from fetched reviews for accuracy
+      double computedAvg = avgRating;
+      if (reviewsList.isNotEmpty) {
+        final sum = reviewsList.fold<int>(
+          0,
+          (acc, r) => acc + ((r['rating'] as num?)?.toInt() ?? 0),
+        );
+        computedAvg = sum / reviewsList.length;
+      }
+
       setState(() {
         _totalEarnings = earnings;
         _completedWalks = totalWalks;
-        _avgRating = avgRating;
+        _avgRating = computedAvg;
+        _reviewCount = reviewsList.length;
+        _reviews = reviewsList;
         _completedBookings = bookingsList;
         _isLoading = false;
       });
@@ -99,6 +122,24 @@ class _WalkerEarningsScreenState extends State<WalkerEarningsScreen> {
             : 'Failed to load earnings. Please try again.';
       });
     }
+  }
+
+  void _showReviewList() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.7,
+      ),
+      builder: (_) => ReviewListBottomSheet(
+        reviews: _reviews,
+        averageRating: _avgRating,
+        reviewCount: _reviewCount,
+      ),
+    );
   }
 
   String _formatDateTime(String? isoString) {
@@ -179,12 +220,17 @@ class _WalkerEarningsScreenState extends State<WalkerEarningsScreen> {
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: _SummaryCard(
-            icon: PhosphorIcons.star(PhosphorIconsStyle.fill),
-            iconColor: AppColors.amber500,
-            bgColor: AppColors.amber50,
-            label: 'Rating',
-            value: _avgRating > 0 ? _avgRating.toStringAsFixed(1) : '-',
+          child: GestureDetector(
+            onTap: _showReviewList,
+            child: _SummaryCard(
+              icon: PhosphorIcons.star(PhosphorIconsStyle.fill),
+              iconColor: AppColors.amber500,
+              bgColor: AppColors.amber50,
+              label: _reviewCount > 0
+                  ? '$_reviewCount review${_reviewCount == 1 ? '' : 's'}'
+                  : 'Rating',
+              value: _avgRating > 0 ? _avgRating.toStringAsFixed(1) : '-',
+            ),
           ),
         ),
       ],

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/widgets/top_bar.dart';
@@ -14,6 +15,9 @@ import 'package:pawgo/screens/walker_chat_list_screen.dart';
 import 'package:pawgo/screens/profile_screen.dart';
 import 'package:pawgo/services/role_service.dart';
 import 'package:pawgo/widgets/review_bottom_sheet.dart';
+import 'package:pawgo/theme/app_theme.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -33,6 +37,10 @@ class MainShellState extends State<MainShell> {
   final _supabase = Supabase.instance.client;
   Timer? _unreadPollTimer;
   RealtimeChannel? _walkCompletionChannel;
+  RealtimeChannel? _reviewNotificationChannel;
+  String? _walkerIdForReviewSub;
+  RealtimeChannel? _newBookingChannel;
+  Map<String, dynamic>? _pendingBookingNotification;
 
   final _ownerScreens = const [
     HomeScreen(),
@@ -54,6 +62,7 @@ class MainShellState extends State<MainShell> {
     _roleService.activeRole.addListener(_onRoleChanged);
     _setupUnreadTracking();
     _subscribeToWalkCompletion();
+    _setupReviewNotification();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final args = ModalRoute.of(context)?.settings.arguments;
       if (args is Map<String, dynamic>) {
@@ -74,6 +83,8 @@ class MainShellState extends State<MainShell> {
     _roleService.activeRole.removeListener(_onRoleChanged);
     _unreadPollTimer?.cancel();
     _walkCompletionChannel?.unsubscribe();
+    _reviewNotificationChannel?.unsubscribe();
+    _newBookingChannel?.unsubscribe();
     super.dispose();
   }
 
@@ -96,7 +107,12 @@ class MainShellState extends State<MainShell> {
             value: userId,
           ),
           callback: (payload) {
-            if (payload.newRecord['status'] != 'walk_completed') return;
+            final status = payload.newRecord['status'] as String?;
+            if (status == 'rejected_by_walker') {
+              if (mounted) _showRejectionNotification();
+              return;
+            }
+            if (status != 'walk_completed') return;
             // Give ActiveWalkScreen 300ms to handle it first (it has its own
             // subscription and shows the sheet immediately on the same event).
             Future.delayed(const Duration(milliseconds: 300), () {
@@ -164,6 +180,191 @@ class MainShellState extends State<MainShell> {
         _onOwnerTabTap(2);
       }
     });
+  }
+
+  /// US-012: Subscribe to Realtime INSERT on reviews table for this walker.
+  /// When a new review arrives, show a SnackBar notification unless the
+  /// walker is already viewing the Earnings tab (index 1).
+  Future<void> _setupReviewNotification() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    try {
+      final walkerRes = await _supabase
+          .from('walkers')
+          .select('id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      if (walkerRes == null) return;
+      _walkerIdForReviewSub = walkerRes['id'] as String;
+      _subscribeToReviewInserts(_walkerIdForReviewSub!);
+      _subscribeToNewBookings(_walkerIdForReviewSub!);
+    } catch (_) {
+      // Non-critical — notification just won't fire
+    }
+  }
+
+  void _subscribeToNewBookings(String walkerId) {
+    _newBookingChannel?.unsubscribe();
+    _newBookingChannel = _supabase.channel('walker_new_booking_$walkerId');
+    _newBookingChannel!
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'bookings',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'walker_id',
+            value: walkerId,
+          ),
+          callback: (payload) {
+            if (!mounted) return;
+            setState(() {
+              _pendingBookingNotification = payload.newRecord;
+            });
+          },
+        )
+        .subscribe();
+  }
+
+  void _subscribeToReviewInserts(String walkerId) {
+    _reviewNotificationChannel?.unsubscribe();
+    _reviewNotificationChannel =
+        _supabase.channel('walker_review_notify_$walkerId');
+    _reviewNotificationChannel!
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'reviews',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'walker_id',
+            value: walkerId,
+          ),
+          callback: (payload) {
+            if (!mounted) return;
+            // Suppress if walker is on Earnings tab (index 1)
+            if (_isWalkerMode && _walkerIndex == 1) return;
+            _showReviewNotification();
+          },
+        )
+        .subscribe();
+  }
+
+  void _showReviewNotification() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              PhosphorIcons.star(PhosphorIconsStyle.fill),
+              color: AppColors.amber500,
+              size: 20,
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                'You received a new review!',
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: AppColors.cacaoBrown,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        margin: const EdgeInsets.fromLTRB(
+          AppSpacing.md, 0, AppSpacing.md, AppSpacing.md,
+        ),
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: 'View',
+          textColor: AppColors.goldenPaw,
+          onPressed: () {
+            // Navigate to Earnings tab (walker index 1)
+            if (_isWalkerMode) {
+              _onWalkerTabTap(1);
+            } else {
+              // If in owner mode, switch to walker mode first then earnings
+              _roleService.switchRole();
+              Future.delayed(const Duration(milliseconds: 100), () {
+                if (mounted) _onWalkerTabTap(1);
+              });
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  void _showRejectionNotification() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              PhosphorIcons.xCircle(PhosphorIconsStyle.fill),
+              color: Colors.white70,
+              size: 20,
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                'Your walk request was declined by the walker.',
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: AppColors.cacaoBrown,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        margin: const EdgeInsets.fromLTRB(
+          AppSpacing.md, 0, AppSpacing.md, AppSpacing.md,
+        ),
+        duration: const Duration(seconds: 5),
+      ),
+    );
+  }
+
+  Widget _buildNewBookingBanner() {
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+      child: _pendingBookingNotification == null
+          ? const SizedBox.shrink()
+          : _NewBookingBanner(
+              booking: _pendingBookingNotification!,
+              onView: () {
+                setState(() => _pendingBookingNotification = null);
+                if (_isWalkerMode) {
+                  _onWalkerTabTap(0);
+                } else {
+                  _roleService.switchRole();
+                  Future.delayed(const Duration(milliseconds: 100), () {
+                    if (mounted) _onWalkerTabTap(0);
+                  });
+                }
+              },
+              onDismiss: () =>
+                  setState(() => _pendingBookingNotification = null),
+            ),
+    );
   }
 
   void _onRoleChanged() {
@@ -279,6 +480,7 @@ class MainShellState extends State<MainShell> {
         child: Column(
           children: [
             const TopBar(),
+            _buildNewBookingBanner(),
             Expanded(
               child: AnimatedSwitcher(
                 duration: reduceMotion
@@ -322,6 +524,112 @@ class MainShellState extends State<MainShell> {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _NewBookingBanner extends StatelessWidget {
+  const _NewBookingBanner({
+    required this.booking,
+    required this.onView,
+    required this.onDismiss,
+  });
+
+  final Map<String, dynamic> booking;
+  final VoidCallback onView;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheduledAt = booking['scheduled_at'] as String?;
+    String timeLabel = '';
+    if (scheduledAt != null) {
+      try {
+        final dt = DateTime.parse(scheduledAt).toLocal();
+        timeLabel = DateFormat('EEE d MMM · h:mm a').format(dt);
+      } catch (_) {}
+    }
+
+    return Container(
+      key: const Key('new-booking-banner'),
+      width: double.infinity,
+      color: AppColors.goldenPaw,
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.sm,
+        AppSpacing.sm,
+      ),
+      child: Row(
+        children: [
+          Icon(
+            PhosphorIcons.pawPrint(PhosphorIconsStyle.fill),
+            color: AppColors.cacaoBrown,
+            size: 22,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'New walk request!',
+                  style: GoogleFonts.nunito(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.cacaoBrown,
+                  ),
+                ),
+                if (timeLabel.isNotEmpty)
+                  Text(
+                    timeLabel,
+                    style: GoogleFonts.nunito(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.cacaoBrown,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          TextButton(
+            key: const Key('new-booking-banner-view'),
+            onPressed: onView,
+            style: TextButton.styleFrom(
+              backgroundColor: AppColors.cacaoBrown,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.sm,
+                vertical: 4,
+              ),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: Text(
+              'View',
+              style: GoogleFonts.nunito(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          IconButton(
+            key: const Key('new-booking-banner-dismiss'),
+            onPressed: onDismiss,
+            icon: Icon(
+              PhosphorIcons.x(),
+              color: AppColors.cacaoBrown,
+              size: 18,
+            ),
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            constraints: const BoxConstraints(),
+          ),
+        ],
       ),
     );
   }

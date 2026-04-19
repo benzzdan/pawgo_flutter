@@ -9,16 +9,27 @@ import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class WalkerBookingsScreen extends StatefulWidget {
-  const WalkerBookingsScreen({super.key, this.initialTab = 0});
+  const WalkerBookingsScreen({
+    super.key,
+    this.initialTab = 0,
+    this.testBookings,
+    this.testWalkerId,
+  });
   final int initialTab;
   static const int defaultInitialTab = 0;
+
+  /// Optional injected bookings for widget tests (bypasses Supabase fetch).
+  final List<Map<String, dynamic>>? testBookings;
+
+  /// Optional injected walker ID for widget tests.
+  final String? testWalkerId;
 
   @override
   State<WalkerBookingsScreen> createState() => _WalkerBookingsScreenState();
 }
 
 class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
-  final _supabase = Supabase.instance.client;
+  SupabaseClient get _supabase => Supabase.instance.client;
   List<Map<String, dynamic>> _bookings = [];
   bool _isLoading = true;
   String? _error;
@@ -26,6 +37,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
   RealtimeChannel? _bookingChannel;
   int _selectedTab = 0; // 0=Upcoming, 1=Active, 2=Completed
   String? _startingWalkId; // Booking ID currently being started (loading state)
+  bool _badgeSeen = false; // True once the user has viewed the Upcoming tab
 
   static const _upcomingStatuses = ['confirmed', 'walker_en_route'];
   static const _activeStatuses = ['walk_started'];
@@ -51,7 +63,15 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
   void initState() {
     super.initState();
     _selectedTab = widget.initialTab;
-    _loadWalkerBookings();
+    _badgeSeen = widget.initialTab == 0;
+    if (widget.testBookings != null) {
+      // Test mode: use injected data, skip Supabase
+      _bookings = List<Map<String, dynamic>>.from(widget.testBookings!);
+      _walkerId = widget.testWalkerId;
+      _isLoading = false;
+    } else {
+      _loadWalkerBookings();
+    }
   }
 
   @override
@@ -139,6 +159,10 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
           ),
           callback: (payload) {
             // New booking assigned — reload to get joined data
+            // Reset badge seen so user sees the new pending count
+            if (_selectedTab != 0) {
+              _badgeSeen = false;
+            }
             _loadWalkerBookings();
           },
         )
@@ -285,6 +309,68 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
     }
   }
 
+  /// Cancel a confirmed booking (sets status to cancelled_by_walker).
+  Future<void> _cancelBooking(String bookingId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Cancel Booking?',
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+        content: Text(
+            'The owner will be notified that you cancelled this booking.',
+            style: GoogleFonts.nunito()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Keep',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.red500,
+            ),
+            child: Text('Yes, Cancel',
+                style: GoogleFonts.nunito(
+                    fontWeight: FontWeight.w700, color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await withRetry(() => _supabase
+          .from('bookings')
+          .update({'status': 'cancelled_by_walker'})
+          .eq('id', bookingId));
+
+      if (!mounted) return;
+
+      AnalyticsService.instance.capture('walker_booking_cancelled',
+          {'booking_id': bookingId});
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Booking cancelled',
+              style: GoogleFonts.nunito(
+                  fontWeight: FontWeight.w600, color: Colors.white)),
+          backgroundColor: AppColors.red500,
+        ),
+      );
+      _loadWalkerBookings();
+    } catch (e) {
+      if (!mounted) return;
+      ErrorHandler.instance.handleError(
+        context,
+        e,
+        screen: 'walker_bookings',
+        fallbackMessage: 'Failed to cancel booking. Please try again.',
+      );
+    }
+  }
+
   Color _statusColor(String status) {
     switch (status) {
       case 'confirmed':
@@ -365,6 +451,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
 
   Widget _buildFilterTabs() {
     final tabs = ['Upcoming', 'Active', 'Completed'];
+    final pendingCount = _pendingBookings.length;
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
       child: Row(
@@ -372,7 +459,12 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
           final isSelected = _selectedTab == index;
           return Expanded(
             child: GestureDetector(
-              onTap: () => setState(() => _selectedTab = index),
+              onTap: () => setState(() {
+                _selectedTab = index;
+                if (index == 0) {
+                  _badgeSeen = true;
+                }
+              }),
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
@@ -380,14 +472,48 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Center(
-                  child: Text(
-                    tabs[index],
-                    style: GoogleFonts.nunito(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: isSelected ? Colors.white : AppColors.textSecondary,
-                    ),
-                  ),
+                  child: index == 0 && pendingCount > 0 && !_badgeSeen
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              tabs[index],
+                              style: GoogleFonts.nunito(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: isSelected ? Colors.white : AppColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.xs),
+                            Container(
+                              key: const Key('upcoming-tab-badge'),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.red500,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                '$pendingCount',
+                                style: GoogleFonts.nunito(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      : Text(
+                          tabs[index],
+                          style: GoogleFonts.nunito(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: isSelected ? Colors.white : AppColors.textSecondary,
+                          ),
+                        ),
                 ),
               ),
             ),
@@ -925,6 +1051,25 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
             ],
           ),
         ),
+      // Cancel Booking button for confirmed/en-route bookings
+      const SizedBox(height: AppSpacing.sm),
+      SizedBox(
+        height: 48,
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: () => _cancelBooking(bookingId),
+          icon: Icon(PhosphorIcons.xCircle(), size: 18),
+          label: Text('Cancel Booking',
+              style: GoogleFonts.nunito(
+                  fontSize: 15, fontWeight: FontWeight.w700)),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.red500,
+            side: const BorderSide(color: AppColors.red500, width: 1.5),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+      ),
       ],
       );
     } else if (status == 'walk_started') {

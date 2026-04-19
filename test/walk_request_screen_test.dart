@@ -110,8 +110,8 @@ void main() {
       });
     });
 
-    group('WalkRequestScreen: accept and decline actions', () {
-      testWidgets('has Accept and Decline buttons', (tester) async {
+    group('WalkRequestScreen: accept and reject actions', () {
+      testWidgets('has Accept and Reject buttons', (tester) async {
         await tester.pumpWidget(
           _buildTestApp(booking: _testBooking()),
         );
@@ -119,10 +119,10 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('Accept'), findsOneWidget);
-        expect(find.text('Decline'), findsOneWidget);
+        expect(find.text('Reject'), findsOneWidget);
       });
 
-      testWidgets('shows confirmation dialog when decline is tapped',
+      testWidgets('shows confirmation dialog when reject is tapped',
           (tester) async {
         await tester.pumpWidget(
           _buildTestApp(booking: _testBooking()),
@@ -130,15 +130,14 @@ void main() {
 
         await tester.pumpAndSettle();
 
-        // Scroll the Decline button into view before tapping
-        await tester.ensureVisible(find.text('Decline'));
+        // Scroll the Reject button into view before tapping
+        await tester.ensureVisible(find.text('Reject'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Decline'));
+        await tester.tap(find.text('Reject'));
         await tester.pumpAndSettle();
 
-        // Should show a confirmation dialog with decline-related text
-        expect(find.text('Decline Request?'), findsOneWidget);
-        expect(find.textContaining('Are you sure'), findsOneWidget);
+        // Should show a confirmation dialog with reject-related text
+        expect(find.text('Reject this booking request?'), findsOneWidget);
       });
     });
 
@@ -159,7 +158,7 @@ void main() {
         expect(find.textContaining('expired'), findsWidgets);
       });
 
-      testWidgets('does not show Accept/Decline buttons when expired',
+      testWidgets('does not show Accept/Reject buttons when expired',
           (tester) async {
         await tester.pumpWidget(
           _buildTestApp(
@@ -172,7 +171,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('Accept'), findsNothing);
-        expect(find.text('Decline'), findsNothing);
+        expect(find.text('Reject'), findsNothing);
       });
 
       testWidgets('shows Go Back button when expired', (tester) async {

@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/config/env.dart';
 import 'package:pawgo/theme/app_theme.dart';
+import 'package:pawgo/services/chat_presence_tracker.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/role_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -63,6 +64,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
       _otherPartyName = args['other_party_name'] as String?;
     }
     if (_bookingId != null) {
+      ChatPresenceTracker.enterChat(_bookingId!);
       _fetchBookingStatus();
       _fetchMessages();
     }
@@ -73,6 +75,9 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
   @override
   void dispose() {
     _disposed = true;
+    if (_bookingId != null) {
+      ChatPresenceTracker.leaveChat(_bookingId!);
+    }
     _messageController.dispose();
     _scrollController.dispose();
     _channel?.unsubscribe();

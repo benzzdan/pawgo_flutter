@@ -140,39 +140,6 @@ class _WalkRequestScreenState extends State<WalkRequestScreen> {
     final bookingId = _booking?['id'] as String?;
     if (bookingId == null) return;
 
-    if (action == 'decline') {
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(
-            'Decline Request?',
-            style: GoogleFonts.nunito(fontWeight: FontWeight.w800),
-          ),
-          content: Text(
-            'Are you sure you want to decline this walk request?',
-            style: GoogleFonts.nunito(),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Cancel',
-                  style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.red500,
-              ),
-              child: Text('Decline',
-                  style: GoogleFonts.nunito(
-                      fontWeight: FontWeight.w700, color: Colors.white)),
-            ),
-          ],
-        ),
-      );
-      if (confirm != true) return;
-    }
-
     setState(() => _isResponding = true);
 
     try {
@@ -217,22 +184,6 @@ class _WalkRequestScreenState extends State<WalkRequestScreen> {
             '/home',
             (route) => false,
           );
-        } else {
-          AnalyticsService.instance.capture('walk_request_declined',
-              {'booking_id': bookingId});
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Walk request declined',
-                  style: GoogleFonts.nunito(color: Colors.white)),
-              backgroundColor: AppColors.textSecondary,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              margin: const EdgeInsets.all(AppSpacing.md),
-            ),
-          );
-          Navigator.pop(context);
         }
       }
     } catch (e) {
@@ -243,6 +194,80 @@ class _WalkRequestScreenState extends State<WalkRequestScreen> {
         e,
         screen: 'walk_request',
         fallbackMessage: 'Failed to respond to walk request. Please try again.',
+      );
+    }
+  }
+
+  /// Reject a pending booking (sets status to rejected_by_walker).
+  Future<void> _rejectBooking() async {
+    final bookingId = _booking?['id'] as String?;
+    if (bookingId == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          'Reject this booking request?',
+          style: GoogleFonts.nunito(fontWeight: FontWeight.w800),
+        ),
+        content: Text(
+          'The owner will be notified that you rejected this request.',
+          style: GoogleFonts.nunito(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.red500,
+            ),
+            child: Text('Reject',
+                style: GoogleFonts.nunito(
+                    fontWeight: FontWeight.w700, color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isResponding = true);
+
+    try {
+      await withRetry(() => _supabase
+          .from('bookings')
+          .update({'status': 'rejected_by_walker'})
+          .eq('id', bookingId));
+
+      if (!mounted) return;
+
+      AnalyticsService.instance.capture('walk_request_rejected',
+          {'booking_id': bookingId});
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Booking rejected',
+              style: GoogleFonts.nunito(color: Colors.white)),
+          backgroundColor: AppColors.textSecondary,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(AppSpacing.md),
+        ),
+      );
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isResponding = false);
+      ErrorHandler.instance.handleError(
+        context,
+        e,
+        screen: 'walk_request',
+        fallbackMessage: 'Failed to reject booking. Please try again.',
       );
     }
   }
@@ -555,7 +580,7 @@ class _WalkRequestScreenState extends State<WalkRequestScreen> {
             SizedBox(
               height: 56,
               child: OutlinedButton(
-                onPressed: _isResponding ? null : () => _respondToBooking('decline'),
+                onPressed: _isResponding ? null : _rejectBooking,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.red500,
                   side: const BorderSide(color: AppColors.red500, width: 1.5),
@@ -563,7 +588,7 @@ class _WalkRequestScreenState extends State<WalkRequestScreen> {
                       borderRadius: BorderRadius.circular(AppRadius.button)),
                 ),
                 child: Text(
-                  'Decline',
+                  'Reject',
                   style: GoogleFonts.nunito(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,

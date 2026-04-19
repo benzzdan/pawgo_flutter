@@ -11,7 +11,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/widgets/review_bottom_sheet.dart';
 
 class BookingsScreen extends StatefulWidget {
-  const BookingsScreen({super.key, this.bookingStatusService});
+  const BookingsScreen({super.key, this.bookingStatusService, this.testBookings});
 
   /// Set before navigating to bookings to open with a specific tab selected.
   /// BookingsScreen reads and clears this in initState.
@@ -19,6 +19,9 @@ class BookingsScreen extends StatefulWidget {
 
   /// Optional injected service for testing.
   final BookingStatusService? bookingStatusService;
+
+  /// Optional injected bookings for widget tests (bypasses Supabase fetch).
+  final List<Map<String, dynamic>>? testBookings;
 
   @override
   State<BookingsScreen> createState() => _BookingsScreenState();
@@ -37,7 +40,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
   BookingStatusConnectionState _connectionState =
       BookingStatusConnectionState.disconnected;
 
-  final _supabase = Supabase.instance.client;
+  SupabaseClient get _supabase => Supabase.instance.client;
 
   @override
   void initState() {
@@ -48,11 +51,17 @@ class _BookingsScreenState extends State<BookingsScreen> {
       BookingsScreen.pendingInitialTab = null;
     }
     _statusService = widget.bookingStatusService ?? BookingStatusService();
-    _fetchBookings().then((_) {
-      if (_error == null) _checkPendingReview();
-    });
-    _subscribeToUpdates();
-    _subscribeToStatusService();
+    if (widget.testBookings != null) {
+      // Test mode: use injected data, skip Supabase
+      _bookings = List<Map<String, dynamic>>.from(widget.testBookings!);
+      _isLoading = false;
+    } else {
+      _fetchBookings().then((_) {
+        if (_error == null) _checkPendingReview();
+      });
+      _subscribeToUpdates();
+      _subscribeToStatusService();
+    }
   }
 
   @override
@@ -230,7 +239,13 @@ class _BookingsScreenState extends State<BookingsScreen> {
       case 'cancelled':
         return _bookings.where((b) {
           final status = b['status'] as String;
-          return ['cancelled', 'disputed'].contains(status);
+          return [
+            'cancelled',
+            'disputed',
+            'cancelled_by_owner',
+            'cancelled_by_walker',
+            'rejected_by_walker',
+          ].contains(status);
         }).toList();
       default:
         return _bookings;
@@ -583,6 +598,64 @@ class _BookingsScreenState extends State<BookingsScreen> {
     }
   }
 
+  /// Cancel a pending or confirmed booking (sets status to cancelled_by_owner).
+  Future<void> _cancelBooking(BuildContext sheetContext, String bookingId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Cancel Booking?',
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+        content: Text(
+            'Are you sure you want to cancel? This cannot be undone.',
+            style: GoogleFonts.nunito()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Keep',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Yes, Cancel',
+                style: GoogleFonts.nunito(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.red500)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await withRetry(() => _supabase
+          .from('bookings')
+          .update({'status': 'cancelled_by_owner'})
+          .eq('id', bookingId));
+
+      if (!mounted) return;
+      Navigator.pop(sheetContext);
+      _fetchBookings();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Booking cancelled',
+              style: GoogleFonts.nunito(fontWeight: FontWeight.w600)),
+          backgroundColor: AppColors.red500,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final appError = AppError.from(e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(appError.message,
+              style: GoogleFonts.nunito(fontWeight: FontWeight.w600)),
+          backgroundColor: AppColors.red500,
+        ),
+      );
+    }
+  }
+
   void _showBookingDetail(Map<String, dynamic> booking) {
     final walkerData = booking['walkers'] as Map<String, dynamic>?;
     final walkerUser = walkerData?['users'] as Map<String, dynamic>?;
@@ -891,6 +964,29 @@ class _BookingsScreenState extends State<BookingsScreen> {
                   ),
                 ),
               ],
+              // Cancel Booking button for pending or confirmed bookings
+              if (status == 'pending' || status == 'confirmed') ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _cancelBooking(ctx, booking['id']),
+                    icon: Icon(PhosphorIcons.xCircle(), size: 18),
+                    label: Text('Cancel Booking',
+                        style: GoogleFonts.nunito(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.red500,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               // Insurance claim button for completed or disputed walks
               if (status == 'walk_completed' || status == 'disputed') ...[
                 const SizedBox(height: 10),
@@ -1138,6 +1234,15 @@ _StatusConfig _statusConfig(String status) {
       return _StatusConfig('Completed', AppColors.green50, AppColors.green700);
     case 'cancelled':
       return _StatusConfig('Cancelled', AppColors.red50, AppColors.red500);
+    case 'cancelled_by_owner':
+      return _StatusConfig(
+          'Cancelled by You', AppColors.red50, AppColors.red500);
+    case 'cancelled_by_walker':
+      return _StatusConfig(
+          'Cancelled by Walker', AppColors.red50, AppColors.red500);
+    case 'rejected_by_walker':
+      return _StatusConfig(
+          'Rejected', AppColors.red50, AppColors.red500);
     case 'disputed':
       return _StatusConfig(
           'Disputed', AppColors.purple50, AppColors.purple600);
