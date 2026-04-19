@@ -107,7 +107,12 @@ class MainShellState extends State<MainShell> {
             value: userId,
           ),
           callback: (payload) {
-            if (payload.newRecord['status'] != 'walk_completed') return;
+            final status = payload.newRecord['status'] as String?;
+            if (status == 'rejected_by_walker') {
+              if (mounted) _showRejectionNotification();
+              return;
+            }
+            if (status != 'walk_completed') return;
             // Give ActiveWalkScreen 300ms to handle it first (it has its own
             // subscription and shows the sheet immediately on the same event).
             Future.delayed(const Duration(milliseconds: 300), () {
@@ -296,6 +301,43 @@ class MainShellState extends State<MainShell> {
             }
           },
         ),
+      ),
+    );
+  }
+
+  void _showRejectionNotification() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              PhosphorIcons.xCircle(PhosphorIconsStyle.fill),
+              color: Colors.white70,
+              size: 20,
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                'Your walk request was declined by the walker.',
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: AppColors.cacaoBrown,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        margin: const EdgeInsets.fromLTRB(
+          AppSpacing.md, 0, AppSpacing.md, AppSpacing.md,
+        ),
+        duration: const Duration(seconds: 5),
       ),
     );
   }
