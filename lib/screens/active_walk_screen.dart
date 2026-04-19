@@ -18,6 +18,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/config/env.dart';
 import 'package:pawgo/widgets/review_bottom_sheet.dart';
 import 'package:pawgo/screens/bookings_screen.dart';
+import 'package:pawgo/utils/walk_nav_helper.dart';
 
 class ActiveWalkScreen extends StatefulWidget {
   const ActiveWalkScreen({
@@ -384,15 +385,20 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
           callback: (payload) {
             final status = payload.newRecord['status'] as String?;
             if (status == 'walk_completed' && mounted) {
-              if (_isWalker) {
-                Navigator.pushReplacementNamed(
-                  context,
-                  '/walker-bookings',
-                  arguments: {'initialTab': 0},
-                );
-              } else {
+              if (shouldPopOnWalkCompletion(
+                isWalker: _isWalker,
+                alreadyEnding: _endingWalk,
+              )) {
+                // Pop back to the MainShell (which hosts the bottom nav bar).
+                // pushReplacementNamed('/walker-bookings') was the old code but
+                // that route is standalone (no MainShell), losing the nav bar.
+                Navigator.pop(context);
+              } else if (!_isWalker) {
                 _showReviewSheet();
               }
+              // When _endingWalk is true, _endWalk() / _performAutoEnd()
+              // already called Navigator.pop() — skip to avoid double-pop
+              // which removes the MainShell and loses the bottom nav bar.
             }
           },
         )
