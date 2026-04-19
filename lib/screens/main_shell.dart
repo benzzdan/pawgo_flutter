@@ -14,6 +14,9 @@ import 'package:pawgo/screens/walker_chat_list_screen.dart';
 import 'package:pawgo/screens/profile_screen.dart';
 import 'package:pawgo/services/role_service.dart';
 import 'package:pawgo/widgets/review_bottom_sheet.dart';
+import 'package:pawgo/utils/booking_notification_helpers.dart';
+import 'package:pawgo/theme/app_theme.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -96,7 +99,15 @@ class MainShellState extends State<MainShell> {
             value: userId,
           ),
           callback: (payload) {
-            if (payload.newRecord['status'] != 'walk_completed') return;
+            final newStatus = payload.newRecord['status'] as String?;
+            if (newStatus == null) return;
+
+            // US-009: Owner notification when walker accepts (confirmed)
+            if (shouldShowOwnerConfirmation(newStatus, true)) {
+              _showWalkConfirmedSnackbar();
+            }
+
+            if (newStatus != 'walk_completed') return;
             // Give ActiveWalkScreen 300ms to handle it first (it has its own
             // subscription and shows the sheet immediately on the same event).
             Future.delayed(const Duration(milliseconds: 300), () {
@@ -164,6 +175,31 @@ class MainShellState extends State<MainShell> {
         _onOwnerTabTap(2);
       }
     });
+  }
+
+  /// Shows a floating snackbar when a walker accepts the owner's booking.
+  /// Styled to match the walker's new-request snackbar (US-003).
+  void _showWalkConfirmedSnackbar() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Your walk has been confirmed!',
+          style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
+        ),
+        backgroundColor: AppColors.cacaoBrown,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: 'View',
+          textColor: AppColors.goldenPaw,
+          onPressed: () {
+            BookingsScreen.pendingInitialTab = 'upcoming';
+            _onOwnerTabTap(2);
+          },
+        ),
+      ),
+    );
   }
 
   void _onRoleChanged() {
