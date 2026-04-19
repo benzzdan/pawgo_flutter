@@ -6,6 +6,7 @@ import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/screens/bookings_screen.dart';
+import 'package:pawgo/utils/booking_validators.dart';
 
 class BookingScreen extends StatefulWidget {
   const BookingScreen({super.key});
@@ -32,6 +33,9 @@ class _BookingScreenState extends State<BookingScreen> {
   TimeOfDay _selectedTime = TimeOfDay.now();
   int _durationMinutes = 60;
   String _notes = '';
+
+  // Validation state
+  String? _dateTimeError;
 
   // Booking state
   bool _submitting = false;
@@ -140,10 +144,13 @@ class _BookingScreenState extends State<BookingScreen> {
     }
 
     final scheduled = _scheduledAt();
-    if (scheduled.isBefore(DateTime.now())) {
-      _showError('Please select a future date and time');
+    final dateError = BookingValidators.validateScheduledDate(scheduled);
+    if (dateError != null) {
+      setState(() => _dateTimeError = dateError);
       return;
     }
+    // Clear any previous date validation error
+    setState(() => _dateTimeError = null);
 
     setState(() => _submitting = true);
 
@@ -405,6 +412,9 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 
   Widget _buildDateTimePicker() {
+    final hasError = _dateTimeError != null;
+    final fieldBorderColor = hasError ? AppColors.red500 : AppColors.border;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -416,19 +426,22 @@ class _BookingScreenState extends State<BookingScreen> {
           children: [
             Expanded(
               child: GestureDetector(
-                onTap: _pickDate,
+                onTap: () {
+                  if (hasError) setState(() => _dateTimeError = null);
+                  _pickDate();
+                },
                 child: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   decoration: BoxDecoration(
-                    color: AppColors.white,
+                    color: hasError ? AppColors.red50 : AppColors.white,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.border),
+                    border: Border.all(color: fieldBorderColor),
                   ),
                   child: Row(
                     children: [
                       Icon(PhosphorIcons.calendarBlank(),
-                          color: AppColors.blue500, size: 20),
+                          color: hasError ? AppColors.red500 : AppColors.blue500, size: 20),
                       const SizedBox(width: 10),
                       Text(
                         '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
@@ -443,19 +456,22 @@ class _BookingScreenState extends State<BookingScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: GestureDetector(
-                onTap: _pickTime,
+                onTap: () {
+                  if (hasError) setState(() => _dateTimeError = null);
+                  _pickTime();
+                },
                 child: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   decoration: BoxDecoration(
-                    color: AppColors.white,
+                    color: hasError ? AppColors.red50 : AppColors.white,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.border),
+                    border: Border.all(color: fieldBorderColor),
                   ),
                   child: Row(
                     children: [
                       Icon(PhosphorIcons.clock(),
-                          color: AppColors.purple500, size: 20),
+                          color: hasError ? AppColors.red500 : AppColors.purple500, size: 20),
                       const SizedBox(width: 10),
                       Text(
                         _selectedTime.format(context),
@@ -469,6 +485,37 @@ class _BookingScreenState extends State<BookingScreen> {
             ),
           ],
         ),
+        if (hasError) ...[
+          const SizedBox(height: AppSpacing.sm),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md,
+              vertical: AppSpacing.sm + 2,
+            ),
+            decoration: BoxDecoration(
+              color: AppColors.red50,
+              borderRadius: BorderRadius.circular(AppSpacing.sm),
+              border: Border.all(color: AppColors.red500.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                Icon(PhosphorIcons.warningCircle(), color: AppColors.red500, size: 18),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    _dateTimeError!,
+                    style: GoogleFonts.nunito(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.red500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
