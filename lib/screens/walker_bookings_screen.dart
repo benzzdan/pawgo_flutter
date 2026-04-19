@@ -13,6 +13,11 @@ class WalkerBookingsScreen extends StatefulWidget {
   final int initialTab;
   static const int defaultInitialTab = 0;
 
+  /// Set to true before navigating to this screen to auto-switch to the
+  /// Upcoming tab and scroll to the Pending Requests section.
+  /// The screen reads and clears this flag in initState.
+  static bool pendingScrollToRequests = false;
+
   @override
   State<WalkerBookingsScreen> createState() => _WalkerBookingsScreenState();
 }
@@ -26,6 +31,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
   RealtimeChannel? _bookingChannel;
   int _selectedTab = 0; // 0=Upcoming, 1=Active, 2=Completed
   String? _startingWalkId; // Booking ID currently being started (loading state)
+  final ScrollController _scrollController = ScrollController();
 
   static const _upcomingStatuses = ['confirmed', 'walker_en_route'];
   static const _activeStatuses = ['walk_started'];
@@ -50,14 +56,64 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedTab = widget.initialTab;
-    _loadWalkerBookings();
+    // Consume the pendingScrollToRequests flag — if set, force Upcoming tab
+    // and scroll to top after data loads so pending requests are visible.
+    final shouldScroll = WalkerBookingsScreen.pendingScrollToRequests;
+    if (shouldScroll) {
+      WalkerBookingsScreen.pendingScrollToRequests = false;
+      _selectedTab = 0; // Upcoming tab shows pending requests
+    } else {
+      _selectedTab = widget.initialTab;
+    }
+    _loadWalkerBookings().then((_) {
+      if (shouldScroll) _scrollToTop();
+    });
   }
 
   @override
   void dispose() {
     _bookingChannel?.unsubscribe();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  /// Scrolls the list to the top so the Pending Requests section is visible.
+  void _scrollToTop() {
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  /// Shows a snackbar alerting the walker to a new walk request.
+  /// Tapping 'View' switches to the Upcoming tab and scrolls to the
+  /// Pending Requests section at the top of the list.
+  void _showNewRequestSnackbar() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'New walk request received!',
+          style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
+        ),
+        backgroundColor: AppColors.cacaoBrown,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'View',
+          textColor: AppColors.goldenPaw,
+          onPressed: () {
+            setState(() => _selectedTab = 0);
+            _scrollToTop();
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _loadWalkerBookings() async {
@@ -139,7 +195,13 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
           ),
           callback: (payload) {
             // New booking assigned — reload to get joined data
-            _loadWalkerBookings();
+            _loadWalkerBookings().then((_) {
+              if (!mounted) return;
+              final status = payload.newRecord['status'] as String?;
+              if (status == 'pending_walker_acceptance') {
+                _showNewRequestSnackbar();
+              }
+            });
           },
         )
         .onPostgresChanges(
@@ -408,6 +470,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
       onRefresh: _loadWalkerBookings,
       color: AppColors.orange500,
       child: ListView(
+        controller: _scrollController,
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
