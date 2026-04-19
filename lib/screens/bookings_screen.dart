@@ -17,6 +17,18 @@ class BookingsScreen extends StatefulWidget {
   /// BookingsScreen reads and clears this in initState.
   static String? pendingInitialTab;
 
+  /// Returns true when the review-check is appropriate — i.e. the user
+  /// navigated to bookings organically (bottom nav) rather than being sent
+  /// here programmatically after creating a booking or submitting a review.
+  /// Also returns false when the review sheet was already shown this session.
+  static bool shouldCheckPendingReview() {
+    if (ReviewBottomSheet.shownThisSession) return false;
+    // When pendingInitialTab is set, the navigation was programmatic
+    // (e.g. after booking creation or review submission) — don't interrupt.
+    if (pendingInitialTab != null) return false;
+    return true;
+  }
+
   /// Optional injected service for testing.
   final BookingStatusService? bookingStatusService;
 
@@ -42,6 +54,10 @@ class _BookingsScreenState extends State<BookingsScreen> {
   @override
   void initState() {
     super.initState();
+    // Capture whether a review check is appropriate BEFORE clearing
+    // pendingInitialTab — once cleared, shouldCheckPendingReview() would
+    // return true even on a programmatic navigation.
+    final shouldReview = BookingsScreen.shouldCheckPendingReview();
     final pending = BookingsScreen.pendingInitialTab;
     if (pending != null) {
       _selectedTab = pending;
@@ -49,7 +65,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
     }
     _statusService = widget.bookingStatusService ?? BookingStatusService();
     _fetchBookings().then((_) {
-      if (_error == null) _checkPendingReview();
+      if (_error == null && shouldReview) _checkPendingReview();
     });
     _subscribeToUpdates();
     _subscribeToStatusService();
