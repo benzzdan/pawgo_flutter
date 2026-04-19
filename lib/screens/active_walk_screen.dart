@@ -19,6 +19,7 @@ import 'package:pawgo/config/env.dart';
 import 'package:pawgo/widgets/review_bottom_sheet.dart';
 import 'package:pawgo/screens/bookings_screen.dart';
 import 'package:pawgo/utils/walk_nav_helper.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class ActiveWalkScreen extends StatefulWidget {
   const ActiveWalkScreen({
@@ -895,7 +896,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
             _buildHeader(),
             Expanded(
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const Center(child: PawProgressIndicator())
                   : _error != null && _routePoints.isEmpty && _locations.isEmpty
                       ? _buildErrorState()
                       : SingleChildScrollView(
@@ -1571,14 +1572,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
             elevation: 0,
           ),
           child: _endingWalk
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
+              ? const PawProgressIndicator(size: 20, strokeWidth: 2, color: Colors.white)
               : Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -1817,10 +1811,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: _isUploadingPhoto
-                      ? const SizedBox(
-                          width: 18, height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
+                      ? const PawProgressIndicator(size: 18, strokeWidth: 2, color: Colors.white)
                       : Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [

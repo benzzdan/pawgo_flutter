@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 /// Button variants for the Pawgo design system.
 enum PawgoButtonVariant { primary, secondary, destructive, text }
@@ -183,14 +184,7 @@ class _PawgoButtonState extends State<PawgoButton>
 
   Widget _buildContent(Color foregroundColor) {
     if (widget.isLoading) {
-      return SizedBox(
-        width: 24,
-        height: 24,
-        child: CircularProgressIndicator(
-          strokeWidth: 2.5,
-          valueColor: AlwaysStoppedAnimation<Color>(foregroundColor),
-        ),
-      );
+      return PawProgressIndicator(size: 24, strokeWidth: 2.5, color: foregroundColor);
     }
 
     if (widget.icon != null) {

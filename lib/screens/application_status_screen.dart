@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class ApplicationStatusScreen extends StatefulWidget {
   const ApplicationStatusScreen({super.key});
@@ -142,7 +143,7 @@ class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: PawProgressIndicator())
           : _error != null
               ? _buildError()
               : _application == null

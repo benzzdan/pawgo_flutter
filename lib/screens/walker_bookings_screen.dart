@@ -7,6 +7,7 @@ import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class WalkerBookingsScreen extends StatefulWidget {
   const WalkerBookingsScreen({super.key, this.initialTab = 0});
@@ -413,7 +414,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.orange500))
+          ? const Center(child: PawProgressIndicator(color: AppColors.orange500))
           : _error != null
               ? _buildErrorState()
               : Column(
@@ -923,11 +924,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
                   child: ElevatedButton.icon(
                     onPressed: isStarting || !canStart ? null : () => _startWalk(bookingId),
                     icon: isStarting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
+                        ? const PawProgressIndicator(size: 18, strokeWidth: 2, color: Colors.white)
                         : Icon(PhosphorIcons.play(PhosphorIconsStyle.fill),
                             color: canStart ? Colors.white : Colors.white54),
                     label: Text(

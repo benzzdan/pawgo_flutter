@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class WalkerApplicationStep2Screen extends StatefulWidget {
   const WalkerApplicationStep2Screen({super.key});
@@ -220,9 +221,7 @@ class _WalkerApplicationStep2ScreenState
             if (_loading)
               const Expanded(
                 child: Center(
-                  child: CircularProgressIndicator(
-                    color: AppColors.warmCaramel,
-                  ),
+                  child: PawProgressIndicator(color: AppColors.warmCaramel),
                 ),
               )
             else
@@ -840,15 +839,7 @@ class _WalkerApplicationStep2ScreenState
               elevation: 0,
             ),
             child: _saving
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(AppColors.white),
-                    ),
-                  )
+                ? const PawProgressIndicator(size: 24, strokeWidth: 2.5, color: AppColors.white)
                 : Text(
                     'Next',
                     style: GoogleFonts.nunito(

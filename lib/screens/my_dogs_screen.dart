@@ -10,6 +10,7 @@ import 'package:pawgo/config/env.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/widgets/celebration_overlay.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class MyDogsScreen extends StatefulWidget {
   const MyDogsScreen({super.key});
@@ -327,7 +328,7 @@ class _MyDogsScreenState extends State<MyDogsScreen> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Center(
-        child: CircularProgressIndicator(color: AppColors.orange500),
+        child: PawProgressIndicator(color: AppColors.orange500),
       );
     }
 
@@ -1193,14 +1194,7 @@ class _DogFormScreenState extends State<_DogFormScreen> {
                   ),
                   child: Center(
                     child: _saving
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
+                        ? const PawProgressIndicator(size: 24, strokeWidth: 2, color: Colors.white)
                         : Text(
                             _isEditing ? 'Save Changes' : 'Add Dog',
                             style: GoogleFonts.nunito(

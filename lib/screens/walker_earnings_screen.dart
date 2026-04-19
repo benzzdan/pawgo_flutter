@@ -4,6 +4,7 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class WalkerEarningsScreen extends StatefulWidget {
   const WalkerEarningsScreen({super.key});
@@ -125,7 +126,7 @@ class _WalkerEarningsScreenState extends State<WalkerEarningsScreen> {
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.orange500))
+          ? const Center(child: PawProgressIndicator(color: AppColors.orange500))
           : _error != null
               ? _buildErrorState()
               : RefreshIndicator(

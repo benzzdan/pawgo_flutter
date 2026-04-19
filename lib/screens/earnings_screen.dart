@@ -6,6 +6,7 @@ import 'package:pawgo/models/mock_data.dart';
 import 'package:pawgo/services/earnings_service.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class EarningsScreen extends StatefulWidget {
   const EarningsScreen({super.key});
@@ -98,7 +99,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: PawProgressIndicator());
     }
 
     if (_error != null) {

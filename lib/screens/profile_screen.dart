@@ -8,6 +8,7 @@ import 'package:pawgo/validators/profile_validator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -409,14 +410,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ? const SizedBox(
                               height: 48,
                               child: Center(
-                                child: SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
+                                child: PawProgressIndicator(size: 20, strokeWidth: 2, color: AppColors.textSecondary),
                               ),
                             )
                           : _isEditingProfile
@@ -569,14 +563,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             child: _profileSaving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
+                ? const PawProgressIndicator(size: 18, strokeWidth: 2, color: Colors.white)
                 : Text(
                     'Save',
                     style: GoogleFonts.nunito(
@@ -648,8 +635,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 16),
                 child: Center(
-                    child: CircularProgressIndicator(
-                        color: AppColors.orange500)),
+                    child: PawProgressIndicator(color: AppColors.orange500)),
               )
             else if (_addresses.isEmpty)
               Padding(

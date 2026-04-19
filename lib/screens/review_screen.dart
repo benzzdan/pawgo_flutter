@@ -8,6 +8,7 @@ import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/screens/bookings_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class ReviewScreen extends StatefulWidget {
   const ReviewScreen({super.key});
@@ -348,14 +349,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 shadowColor: AppColors.orange500.withValues(alpha: 0.3),
               ),
               child: _isSubmitting
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
+                  ? const PawProgressIndicator(size: 24, strokeWidth: 2, color: Colors.white)
                   : Text(
                       'Submit Review',
                       style: GoogleFonts.nunito(

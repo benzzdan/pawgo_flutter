@@ -7,6 +7,7 @@ import 'package:pawgo/services/error_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/screens/bookings_screen.dart';
 import 'package:pawgo/utils/booking_validators.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class BookingScreen extends StatefulWidget {
   const BookingScreen({super.key});
@@ -330,7 +331,7 @@ class _BookingScreenState extends State<BookingScreen> {
                 fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
         const SizedBox(height: 12),
         if (_loadingDogs)
-          const Center(child: CircularProgressIndicator())
+          const Center(child: PawProgressIndicator())
         else if (_dogsError != null)
           Center(
             child: Text(_dogsError!,
@@ -700,11 +701,7 @@ class _BookingScreenState extends State<BookingScreen> {
           ),
           child: Center(
             child: _submitting
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                        color: Colors.white, strokeWidth: 2.5))
+                ? const PawProgressIndicator(size: 24, strokeWidth: 2.5, color: Colors.white)
                 : Text(
                     'Confirm Booking - \$${_totalPrice().toStringAsFixed(0)} MXN',
                     style: GoogleFonts.nunito(

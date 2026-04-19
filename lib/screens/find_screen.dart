@@ -8,6 +8,7 @@ import 'package:pawgo/services/walker_service.dart';
 import 'package:pawgo/services/geocoding_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class FindScreenLayout {
   static const double walkerCardSpacing = 16.0;
@@ -433,7 +434,7 @@ class _FindScreenState extends State<FindScreen> {
   Widget _buildContent() {
     if (_isLoading) {
       return const Center(
-        child: CircularProgressIndicator(color: AppColors.orange500),
+        child: PawProgressIndicator(color: AppColors.orange500),
       );
     }
 

@@ -9,6 +9,7 @@ import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/booking_status_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/widgets/review_bottom_sheet.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class BookingsScreen extends StatefulWidget {
   const BookingsScreen({super.key, this.bookingStatusService});
@@ -440,7 +441,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
 
   Widget _buildContent() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: PawProgressIndicator());
     }
 
     if (_error != null) {

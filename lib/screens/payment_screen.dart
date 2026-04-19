@@ -8,6 +8,7 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({super.key});
@@ -264,7 +265,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   Widget _buildPaymentView() {
     if (_initializing) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: PawProgressIndicator());
     }
 
     return Column(
@@ -470,11 +471,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           ),
           child: Center(
             child: _processing
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                        color: Colors.white, strokeWidth: 2.5))
+                ? const PawProgressIndicator(size: 24, strokeWidth: 2.5, color: Colors.white)
                 : Text(
                     _error != null
                         ? 'Retry Payment'

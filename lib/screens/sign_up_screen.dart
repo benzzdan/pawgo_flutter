@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -252,14 +253,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                       child: Center(
                         child: _loading
-                            ? const SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2.5,
-                                ),
-                              )
+                            ? const PawProgressIndicator(size: 24, strokeWidth: 2.5, color: Colors.white)
                             : Text(
                                 'Create Account',
                                 style: GoogleFonts.nunito(

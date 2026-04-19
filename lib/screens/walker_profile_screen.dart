@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class WalkerProfileScreen extends StatefulWidget {
   const WalkerProfileScreen({super.key});
@@ -147,7 +148,7 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
             // Content
             Expanded(
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const Center(child: PawProgressIndicator())
                   : _error != null
                       ? _buildErrorState()
                       : _buildContent(),

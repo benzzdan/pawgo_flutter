@@ -4,6 +4,7 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class WalkerChatListScreen extends StatefulWidget {
   const WalkerChatListScreen({super.key});
@@ -294,7 +295,7 @@ class _WalkerChatListScreenState extends State<WalkerChatListScreen> {
       body: _isLoading
           ? const Center(
               child:
-                  CircularProgressIndicator(color: AppColors.cacaoBrown))
+                  PawProgressIndicator(color: AppColors.cacaoBrown))
           : _error != null
               ? _buildErrorState()
               : _chatItems.isEmpty

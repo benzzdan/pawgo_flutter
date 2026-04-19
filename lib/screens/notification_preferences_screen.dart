@@ -4,6 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 /// Abstraction over Supabase calls so the screen is testable without
 /// a real Supabase client.
@@ -165,7 +166,7 @@ class _NotificationPreferencesScreenState
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: PawProgressIndicator());
     }
 
     if (_error) {

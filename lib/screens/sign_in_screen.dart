@@ -4,6 +4,7 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -795,14 +796,7 @@ class _PrimaryButton extends StatelessWidget {
         ),
         child: Center(
           child: loading
-              ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    color: Colors.white,
-                    strokeWidth: 2.5,
-                  ),
-                )
+              ? const PawProgressIndicator(size: 24, strokeWidth: 2.5, color: Colors.white)
               : Text(
                   label,
                   style: GoogleFonts.nunito(

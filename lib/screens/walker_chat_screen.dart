@@ -10,6 +10,7 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/role_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class WalkerChatScreen extends StatefulWidget {
   const WalkerChatScreen({super.key});
@@ -575,7 +576,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
             if (_isDisconnected) _buildConnectionBanner(),
             Expanded(
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const Center(child: PawProgressIndicator())
                   : _buildMessages(),
             ),
             if (_isChatActive && RoleService.instance.activeRole.value == ActiveRole.walker) _buildQuickActions(),
@@ -954,7 +955,7 @@ class _WalkerChatScreenState extends State<WalkerChatScreen> {
               child: _isUploading
                   ? const Padding(
                       padding: EdgeInsets.all(8),
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: PawProgressIndicator(strokeWidth: 2),
                     )
                   : Icon(PhosphorIcons.image(),
                       size: 18, color: AppColors.textSecondary),

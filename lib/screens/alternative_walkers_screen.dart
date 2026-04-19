@@ -4,6 +4,7 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 /// Screen shown when a walker declines or the request expires.
 /// Displays up to 3 suggested alternative walkers with "Book Instead" buttons.
@@ -214,7 +215,7 @@ class _AlternativeWalkersScreenState extends State<AlternativeWalkersScreen> {
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: PawProgressIndicator());
     }
 
     if (_error != null) {

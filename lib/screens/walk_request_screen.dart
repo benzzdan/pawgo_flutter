@@ -6,6 +6,7 @@ import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 /// Walk request detail screen where walkers can accept or decline a booking.
 ///
@@ -287,7 +288,7 @@ class _WalkRequestScreenState extends State<WalkRequestScreen> {
       body: _isLoading
           ? const Center(
               child:
-                  CircularProgressIndicator(color: AppColors.orange500))
+                  PawProgressIndicator(color: AppColors.orange500))
           : _error != null
               ? _buildErrorState()
               : _buildContent(theme),
@@ -535,12 +536,7 @@ class _WalkRequestScreenState extends State<WalkRequestScreen> {
                       borderRadius: BorderRadius.circular(AppRadius.button)),
                 ),
                 child: _isResponding
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
-                      )
+                    ? const PawProgressIndicator(size: 20, strokeWidth: 2, color: Colors.white)
                     : Text(
                         'Accept',
                         style: GoogleFonts.nunito(

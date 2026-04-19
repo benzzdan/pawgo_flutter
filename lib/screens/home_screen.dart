@@ -11,6 +11,7 @@ import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/role_service.dart';
 import 'package:pawgo/screens/main_shell.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -261,7 +262,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: _loading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? const Center(child: PawProgressIndicator())
                     : Row(
                         children: [
                           Expanded(
@@ -392,7 +393,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_walkers.isEmpty && _loading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 32),
-        child: Center(child: CircularProgressIndicator()),
+        child: Center(child: PawProgressIndicator()),
       );
     }
 

@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class ReviewBottomSheet extends StatefulWidget {
   const ReviewBottomSheet({
@@ -182,8 +183,7 @@ class _ReviewBottomSheetState extends State<ReviewBottomSheet> {
                     ),
                   ),
                   child: _isSubmitting
-                      ? const SizedBox(width: 20, height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      ? const PawProgressIndicator(size: 20, strokeWidth: 2, color: Colors.white)
                       : Text('Submit Review',
                           style: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
                 ),

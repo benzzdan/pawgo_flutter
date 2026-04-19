@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 class WalkerApplicationStep4Screen extends StatefulWidget {
   const WalkerApplicationStep4Screen({super.key});
@@ -157,9 +158,7 @@ class _WalkerApplicationStep4ScreenState
       body: SafeArea(
         child: _loading
             ? const Center(
-                child: CircularProgressIndicator(
-                  color: AppColors.warmCaramel,
-                ),
+                child: PawProgressIndicator(color: AppColors.warmCaramel),
               )
             : Column(
                 children: [
@@ -568,15 +567,7 @@ class _WalkerApplicationStep4ScreenState
             elevation: 0,
           ),
           child: _submitting
-              ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(AppColors.white),
-                  ),
-                )
+              ? const PawProgressIndicator(size: 24, strokeWidth: 2.5, color: AppColors.white)
               : Text(
                   'Submit Application',
                   style: GoogleFonts.nunito(
