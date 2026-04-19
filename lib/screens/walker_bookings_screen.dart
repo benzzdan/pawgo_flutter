@@ -8,6 +8,7 @@ import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/widgets/paw_progress_indicator.dart';
+import 'package:pawgo/widgets/start_walk_loading_overlay.dart';
 
 class WalkerBookingsScreen extends StatefulWidget {
   const WalkerBookingsScreen({super.key, this.initialTab = 0});
@@ -413,16 +414,21 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
           ),
         ),
       ),
-      body: _isLoading
-          ? const Center(child: PawProgressIndicator(color: AppColors.orange500))
-          : _error != null
-              ? _buildErrorState()
-              : Column(
-                  children: [
-                    _buildFilterTabs(),
-                    Expanded(child: _buildTabContent()),
-                  ],
-                ),
+      body: Stack(
+        children: [
+          _isLoading
+              ? const Center(child: PawProgressIndicator(color: AppColors.orange500))
+              : _error != null
+                  ? _buildErrorState()
+                  : Column(
+                      children: [
+                        _buildFilterTabs(),
+                        Expanded(child: _buildTabContent()),
+                      ],
+                    ),
+          StartWalkLoadingOverlay(visible: _startingWalkId != null),
+        ],
+      ),
     );
   }
 
