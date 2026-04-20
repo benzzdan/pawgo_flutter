@@ -903,9 +903,9 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                           child: Column(
                             children: [
                               _buildMapArea(),
-                              const SizedBox(height: 16),
-                              _buildWalkerInfo(),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: AppSpacing.md),
+                              _buildActionRow(),
+                              const SizedBox(height: AppSpacing.md),
                               _buildStatsGrid(),
                               if (_isWalker) ...[
                                 const SizedBox(height: AppSpacing.sm),
@@ -918,11 +918,11 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                                 const SizedBox(height: AppSpacing.md),
                                 _buildEndWalkButton(),
                               ],
-                              const SizedBox(height: 16),
+                              const SizedBox(height: AppSpacing.md),
                               _buildTabNav(),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: AppSpacing.md),
                               _buildTabContent(),
-                              const SizedBox(height: 24),
+                              const SizedBox(height: AppSpacing.lg),
                             ],
                           ),
                         ),
@@ -1078,54 +1078,125 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
 
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.sm),
+      child: Column(
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          // Top row: walker info + close button
+          Row(
+            key: const Key('walkerInfoSection'),
             children: [
-              Text(
-                'Active Walk',
-                style: GoogleFonts.nunito(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.textPrimary,
+              // Walker avatar
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.orange400, AppColors.orange500],
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Center(
+                  child: Icon(PhosphorIcons.personSimpleWalk(),
+                      size: 24, color: Colors.white),
                 ),
               ),
-              const SizedBox(height: 2),
-              Text(
-                _bookingStatus == 'walk_completed'
-                    ? 'Walk completed'
-                    : 'Live tracking',
-                style: GoogleFonts.nunito(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: _bookingStatus == 'walk_completed'
-                      ? AppColors.green600
-                      : AppColors.textSecondary,
+              const SizedBox(width: AppSpacing.sm),
+              // Walker name + status
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _walkerName ?? 'Walker',
+                      style: GoogleFonts.nunito(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      _bookingStatus == 'walk_completed'
+                          ? 'Walk completed'
+                          : 'Walking ${_dogName ?? 'your dog'}',
+                      style: GoogleFonts.nunito(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: _bookingStatus == 'walk_completed'
+                            ? AppColors.green600
+                            : AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Close button
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Text('\u{2715}', style: TextStyle(fontSize: 18)),
+                  ),
                 ),
               ),
             ],
           ),
-          GestureDetector(
-            onTap: () => Navigator.pop(context),
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: AppColors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: 8,
+          const SizedBox(height: AppSpacing.sm),
+          // Walk timer row
+          Container(
+            key: const Key('walkTimerDisplay'),
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(PhosphorIcons.clock(),
+                    size: 18, color: AppColors.orange500),
+                const SizedBox(width: AppSpacing.sm),
+                Text(
+                  '${_elapsedMinutes}min',
+                  style: GoogleFonts.nunito(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.textPrimary,
                   ),
-                ],
-              ),
-              child: const Center(
-                child: Text('\u{2715}', style: TextStyle(fontSize: 18)),
-              ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Container(
+                  width: 1,
+                  height: 20,
+                  color: AppColors.border,
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Text(
+                  _bookingStatus == 'walk_completed'
+                      ? 'Completed'
+                      : 'In progress',
+                  style: GoogleFonts.nunito(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: _bookingStatus == 'walk_completed'
+                        ? AppColors.green600
+                        : AppColors.orange500,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -1389,72 +1460,40 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
     );
   }
 
-  Widget _buildWalkerInfo() {
+  /// Action row with phone and chat buttons — replaces the old walker info card
+  /// since walker identity moved to the header.
+  Widget _buildActionRow() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 12,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 56,
-              height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              height: 48,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.orange400, AppColors.orange500],
-                ),
-                borderRadius: BorderRadius.circular(12),
+                color: AppColors.green50,
+                borderRadius: BorderRadius.circular(14),
               ),
-              child: Center(
-                child: Icon(PhosphorIcons.personSimpleWalk(), size: 28, color: Colors.white),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  Icon(PhosphorIcons.phone(), size: 18, color: AppColors.green600),
+                  const SizedBox(width: AppSpacing.sm),
                   Text(
-                    _walkerName ?? 'Walker',
-                    style: GoogleFonts.nunito(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  Text(
-                    'Walking ${_dogName ?? 'your dog'}',
+                    'Call',
                     style: GoogleFonts.nunito(
                       fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.green600,
                     ),
                   ),
                 ],
               ),
             ),
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: AppColors.green50,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(PhosphorIcons.phone(), size: 18, color: AppColors.green600),
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: GestureDetector(
               onTap: () {
                 setState(() => _unreadChatCount = 0);
                 Navigator.pushNamed(context, '/chat',
@@ -1469,14 +1508,27 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                 clipBehavior: Clip.none,
                 children: [
                   Container(
-                    width: 40,
-                    height: 40,
+                    height: 48,
                     decoration: BoxDecoration(
                       color: AppColors.blue50,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Icon(PhosphorIcons.chatCircle(PhosphorIconsStyle.fill),
-                        size: 18, color: AppColors.blue600),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(PhosphorIcons.chatCircle(PhosphorIconsStyle.fill),
+                            size: 18, color: AppColors.blue600),
+                        const SizedBox(width: AppSpacing.sm),
+                        Text(
+                          'Chat',
+                          style: GoogleFonts.nunito(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.blue600,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   if (_unreadChatCount > 0)
                     Positioned(
@@ -1510,8 +1562,8 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                 ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1523,17 +1575,9 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
         : '${distanceKm.toStringAsFixed(1)}km';
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       child: Row(
         children: [
-          _WalkStat(
-            icon: PhosphorIcons.clock(),
-            iconColor: AppColors.blue500,
-            bgGradient: const [AppColors.blue50, Color(0x80DBEAFE)],
-            value: '$_elapsedMinutes',
-            label: 'minutes',
-          ),
-          const SizedBox(width: 12),
           _WalkStat(
             icon: PhosphorIcons.trendUp(),
             iconColor: AppColors.orange500,
@@ -1541,7 +1585,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
             value: distanceStr,
             label: 'distance',
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpacing.sm),
           _WalkStat(
             icon: PhosphorIcons.mapPin(PhosphorIconsStyle.fill),
             iconColor: AppColors.purple500,
