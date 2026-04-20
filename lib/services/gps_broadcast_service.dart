@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pawgo/utils/gps_broadcast_helpers.dart';
 
 /// Service that broadcasts the walker's GPS coordinates to Supabase
 /// every 5 seconds during an active walk.
@@ -104,12 +105,12 @@ class GpsBroadcastService {
       if (walkerData == null) return false;
       final walkerId = walkerData['id'] as String;
 
-      // Find active booking (walk_started status)
+      // Find active booking in any GPS-broadcast phase
       final booking = await _client
           .from('bookings')
           .select('id')
           .eq('walker_id', walkerId)
-          .eq('status', 'walk_started')
+          .inFilter('status', gpsBroadcastActiveStatuses)
           .maybeSingle();
 
       if (booking == null) return false;

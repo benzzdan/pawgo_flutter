@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
+import 'package:pawgo/utils/gps_broadcast_helpers.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/widgets/paw_progress_indicator.dart';
 import 'package:pawgo/widgets/start_walk_loading_overlay.dart';
@@ -224,6 +225,7 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
                 // Remove cancelled bookings
                 if (status == 'cancelled') {
                   _bookings.removeAt(idx);
+                  GpsBroadcastService.instance.stopBroadcasting();
                 } else {
                   // Preserve joined data, update booking fields
                   _bookings[idx] = {
@@ -233,6 +235,12 @@ class _WalkerBookingsScreenState extends State<WalkerBookingsScreen> {
                     'users': _bookings[idx]['users'],
                     'walkers': _bookings[idx]['walkers'],
                   };
+
+                  // Start GPS broadcast when status enters an active phase
+                  if (status != null && shouldStartGpsBroadcast(status)) {
+                    GpsBroadcastService.instance
+                        .startBroadcasting(updated['id'] as String);
+                  }
                 }
               }
             });

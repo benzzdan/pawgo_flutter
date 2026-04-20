@@ -22,6 +22,7 @@ import 'package:pawgo/utils/walk_nav_helper.dart';
 import 'package:pawgo/widgets/paw_progress_indicator.dart';
 import 'package:pawgo/widgets/walk_timeline.dart';
 import 'package:pawgo/widgets/walk_photos_tab.dart';
+import 'package:pawgo/utils/gps_broadcast_helpers.dart';
 
 class ActiveWalkScreen extends StatefulWidget {
   const ActiveWalkScreen({
@@ -340,10 +341,13 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
         }
       }
 
-      // If the current user is the walker and walk is active, start GPS broadcast
-      if (isWalker && status == 'walk_started') {
+      // If the current user is the walker and booking is in a GPS-active phase,
+      // start broadcasting. Idempotent — won't double-start for the same booking.
+      if (isWalker && status != null && shouldStartGpsBroadcast(status)) {
         _startGpsBroadcast();
-        _startAutoEndTimer();
+        if (status == 'walk_started') {
+          _startAutoEndTimer();
+        }
       }
 
       // Fetch existing walk photos
