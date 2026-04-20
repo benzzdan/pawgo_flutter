@@ -10,6 +10,8 @@ import 'package:pawgo/services/booking_status_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/widgets/review_bottom_sheet.dart';
 import 'package:pawgo/widgets/paw_progress_indicator.dart';
+import 'package:pawgo/utils/enroute_map_helpers.dart';
+import 'package:pawgo/widgets/walker_enroute_map.dart';
 
 class BookingsScreen extends StatefulWidget {
   const BookingsScreen({super.key, this.bookingStatusService});
@@ -820,8 +822,16 @@ class _BookingsScreenState extends State<BookingsScreen> {
                     );
                   },
                 ),
+              // En-route map for confirmed / walker_en_route
+              if (shouldShowEnRouteMap(status)) ...[
+                const SizedBox(height: AppSpacing.md),
+                WalkerEnRouteMap(bookingId: booking['id'] as String),
+                const SizedBox(height: AppSpacing.md),
+              ],
               // Action buttons based on status
-              if (status == 'walk_started' || status == 'confirmed') ...[
+              if (status == 'walk_started' ||
+                  status == 'confirmed' ||
+                  status == 'walker_en_route') ...[
                 Row(
                   children: [
                     if (status == 'walk_started')
