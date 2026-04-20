@@ -20,6 +20,7 @@ import 'package:pawgo/widgets/review_bottom_sheet.dart';
 import 'package:pawgo/screens/bookings_screen.dart';
 import 'package:pawgo/utils/walk_nav_helper.dart';
 import 'package:pawgo/widgets/paw_progress_indicator.dart';
+import 'package:pawgo/widgets/walk_timeline.dart';
 
 class ActiveWalkScreen extends StatefulWidget {
   const ActiveWalkScreen({
@@ -907,6 +908,11 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
                               _buildActionRow(),
                               const SizedBox(height: AppSpacing.md),
                               _buildStatsGrid(),
+                              const SizedBox(height: AppSpacing.md),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                                child: WalkTimeline(status: _bookingStatus),
+                              ),
                               if (_isWalker) ...[
                                 const SizedBox(height: AppSpacing.sm),
                                 Padding(
