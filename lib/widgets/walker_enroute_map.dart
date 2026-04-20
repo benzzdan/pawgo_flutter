@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/tracking_service.dart';
 import 'package:pawgo/models/mock_data.dart';
+import 'package:pawgo/utils/distance_utils.dart';
 import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 /// Displays a map with two pins — the walker's live GPS position and the
@@ -245,6 +246,14 @@ class _WalkerEnRouteMapState extends State<WalkerEnRouteMap> {
             left: AppSpacing.sm,
             child: _buildStatusBadge(),
           ),
+          // Distance badge — shows live distance between walker and home
+          if (_walkerPosition != null && _homePosition != null)
+            Positioned(
+              bottom: AppSpacing.sm,
+              left: 0,
+              right: 0,
+              child: Center(child: _buildDistanceBadge()),
+            ),
           // "Locating walker..." overlay when no GPS data yet
           if (_walkerPosition == null)
             Positioned.fill(
@@ -321,6 +330,44 @@ class _WalkerEnRouteMapState extends State<WalkerEnRouteMap> {
     }
 
     return markers;
+  }
+
+  Widget _buildDistanceBadge() {
+    final distance = calculateDistanceMeters(
+      _walkerPosition!.latitude,
+      _walkerPosition!.longitude,
+      _homePosition!.latitude,
+      _homePosition!.longitude,
+    );
+    final label = formatDistanceBadge(distance);
+    final isAlmostHere = distance <= 200;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: isAlmostHere
+            ? AppColors.goldenPaw.withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 8,
+          ),
+        ],
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.nunito(
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+          color: isAlmostHere ? Colors.white : AppColors.textPrimary,
+        ),
+      ),
+    );
   }
 
   Widget _buildStatusBadge() {

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -18,6 +17,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/config/env.dart';
 import 'package:pawgo/widgets/review_bottom_sheet.dart';
 import 'package:pawgo/screens/bookings_screen.dart';
+import 'package:pawgo/utils/distance_utils.dart';
 import 'package:pawgo/utils/walk_nav_helper.dart';
 import 'package:pawgo/widgets/paw_progress_indicator.dart';
 import 'package:pawgo/widgets/walk_timeline.dart';
@@ -772,25 +772,17 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
 
   double _calculateDistanceKm() {
     if (_routePoints.length < 2) return 0;
-    double total = 0;
+    double totalMeters = 0;
     for (int i = 1; i < _routePoints.length; i++) {
-      total += _haversineDistance(_routePoints[i - 1], _routePoints[i]);
+      totalMeters += calculateDistanceMeters(
+        _routePoints[i - 1].latitude,
+        _routePoints[i - 1].longitude,
+        _routePoints[i].latitude,
+        _routePoints[i].longitude,
+      );
     }
-    return total;
+    return totalMeters / 1000.0;
   }
-
-  double _haversineDistance(LatLng a, LatLng b) {
-    const r = 6371.0; // Earth radius in km
-    final dLat = _toRad(b.latitude - a.latitude);
-    final dLng = _toRad(b.longitude - a.longitude);
-    final sinDLat = sin(dLat / 2);
-    final sinDLng = sin(dLng / 2);
-    final h = sinDLat * sinDLat +
-        cos(_toRad(a.latitude)) * cos(_toRad(b.latitude)) * sinDLng * sinDLng;
-    return 2 * r * asin(sqrt(h));
-  }
-
-  double _toRad(double deg) => deg * (3.14159265358979323846 / 180);
 
   void _showReviewSheet() {
     if (_bookingId == null || _walkerId == null) return;
