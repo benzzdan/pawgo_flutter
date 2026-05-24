@@ -23,6 +23,7 @@ import 'package:pawgo/widgets/paw_progress_indicator.dart';
 import 'package:pawgo/widgets/walk_timeline.dart';
 import 'package:pawgo/widgets/walk_photos_tab.dart';
 import 'package:pawgo/utils/gps_broadcast_helpers.dart';
+import 'package:pawgo/utils/media_url_rewriter.dart';
 
 class ActiveWalkScreen extends StatefulWidget {
   const ActiveWalkScreen({
@@ -1858,9 +1859,14 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
               Center(
                 child: InteractiveViewer(
                   child: Image.network(
-                    imageUrl,
+                    rewriteMediaUrl(imageUrl,
+                            supabaseUrl: Env.current.supabaseUrl) ??
+                        imageUrl,
                     fit: BoxFit.contain,
                     headers: {'apikey': Env.current.supabaseAnonKey},
+                    loadingBuilder: (ctx, child, progress) => progress == null
+                        ? child
+                        : const Center(child: PawProgressIndicator(size: 24)),
                     errorBuilder: (_, __, ___) => Icon(
                       PhosphorIcons.imageBroken(),
                       size: 64,

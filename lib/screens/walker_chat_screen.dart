@@ -11,6 +11,7 @@ import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/role_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/widgets/paw_progress_indicator.dart';
+import 'package:pawgo/utils/media_url_rewriter.dart';
 
 class WalkerChatScreen extends StatefulWidget {
   const WalkerChatScreen({super.key});
@@ -1270,11 +1271,15 @@ class _MessageBubble extends StatelessWidget {
             )
           else
             Image.network(
-              mediaUrl,
+              rewriteMediaUrl(mediaUrl, supabaseUrl: Env.current.supabaseUrl) ??
+                  mediaUrl,
               fit: BoxFit.cover,
               headers: {
                 'apikey': Env.current.supabaseAnonKey,
               },
+              loadingBuilder: (ctx, child, progress) => progress == null
+                  ? child
+                  : const Center(child: PawProgressIndicator(size: 24)),
               errorBuilder: (_, __, ___) => Container(
                 color: AppColors.surface,
                 child: Center(
@@ -1409,11 +1414,15 @@ class FullScreenPhotoViewer extends StatelessWidget {
           Center(
             child: InteractiveViewer(
               child: Image.network(
-                imageUrl,
+                rewriteMediaUrl(imageUrl, supabaseUrl: Env.current.supabaseUrl) ??
+                    imageUrl,
                 fit: BoxFit.contain,
                 headers: {
                   'apikey': Env.current.supabaseAnonKey,
                 },
+                loadingBuilder: (ctx, child, progress) => progress == null
+                    ? child
+                    : const Center(child: PawProgressIndicator(size: 24)),
                 errorBuilder: (_, __, ___) => Icon(
                   PhosphorIcons.imageBroken(),
                   size: 64,

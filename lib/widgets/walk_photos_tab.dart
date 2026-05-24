@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:pawgo/config/env.dart';
 import 'package:pawgo/theme/app_theme.dart';
+import 'package:pawgo/utils/media_url_rewriter.dart';
 import 'package:pawgo/widgets/paw_progress_indicator.dart';
 
 /// Displays walk photos in the active walk screen's Photos tab.
@@ -196,8 +198,12 @@ class _PhotoGrid extends StatelessWidget {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(AppSpacing.sm),
             child: Image.network(
-              url,
+              rewriteMediaUrl(url, supabaseUrl: Env.current.supabaseUrl) ?? url,
               fit: BoxFit.cover,
+              headers: {'apikey': Env.current.supabaseAnonKey},
+              loadingBuilder: (ctx, child, progress) => progress == null
+                  ? child
+                  : const Center(child: PawProgressIndicator(size: 24)),
               errorBuilder: (_, __, ___) => Container(
                 color: AppColors.surface,
                 child: Center(
