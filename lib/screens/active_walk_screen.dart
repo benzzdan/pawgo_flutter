@@ -15,6 +15,7 @@ import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/widgets/review_bottom_sheet.dart';
+import 'package:pawgo/widgets/end_walk_confirm_sheet.dart';
 import 'package:pawgo/screens/bookings_screen.dart';
 import 'package:pawgo/utils/distance_utils.dart';
 import 'package:pawgo/utils/walk_nav_helper.dart';
@@ -813,30 +814,7 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
   Future<void> _endWalk() async {
     if (_bookingId == null) return;
 
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('End Walk?',
-            style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
-        content: Text('Are you sure you want to end this walk?',
-            style: GoogleFonts.nunito()),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel',
-                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.orange500),
-            child: Text('End Walk',
-                style: GoogleFonts.nunito(
-                    fontWeight: FontWeight.w700, color: Colors.white)),
-          ),
-        ],
-      ),
-    );
+    final confirm = await showEndWalkConfirmSheet(context);
 
     if (confirm != true || !mounted) return;
 
