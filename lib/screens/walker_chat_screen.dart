@@ -5,13 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:pawgo/config/env.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/role_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/widgets/paw_progress_indicator.dart';
-import 'package:pawgo/utils/media_url_rewriter.dart';
+import 'package:pawgo/widgets/chat_media_image.dart';
 
 class WalkerChatScreen extends StatefulWidget {
   const WalkerChatScreen({super.key});
@@ -1270,24 +1269,7 @@ class _MessageBubble extends StatelessWidget {
               ),
             )
           else
-            Image.network(
-              rewriteMediaUrl(mediaUrl, supabaseUrl: Env.current.supabaseUrl) ??
-                  mediaUrl,
-              fit: BoxFit.cover,
-              headers: {
-                'apikey': Env.current.supabaseAnonKey,
-              },
-              loadingBuilder: (ctx, child, progress) => progress == null
-                  ? child
-                  : const Center(child: PawProgressIndicator(size: 24)),
-              errorBuilder: (_, __, ___) => Container(
-                color: AppColors.surface,
-                child: Center(
-                  child: Icon(PhosphorIcons.imageBroken(),
-                      size: 32, color: AppColors.textTertiary),
-                ),
-              ),
-            ),
+            ChatMediaImage(url: mediaUrl),
           Positioned(
             bottom: 8,
             right: 8,
@@ -1413,16 +1395,9 @@ class FullScreenPhotoViewer extends StatelessWidget {
         children: [
           Center(
             child: InteractiveViewer(
-              child: Image.network(
-                rewriteMediaUrl(imageUrl, supabaseUrl: Env.current.supabaseUrl) ??
-                    imageUrl,
+              child: ChatMediaImage(
+                url: imageUrl,
                 fit: BoxFit.contain,
-                headers: {
-                  'apikey': Env.current.supabaseAnonKey,
-                },
-                loadingBuilder: (ctx, child, progress) => progress == null
-                    ? child
-                    : const Center(child: PawProgressIndicator(size: 24)),
                 errorBuilder: (_, __, ___) => Icon(
                   PhosphorIcons.imageBroken(),
                   size: 64,

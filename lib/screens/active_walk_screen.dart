@@ -14,7 +14,6 @@ import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
-import 'package:pawgo/config/env.dart';
 import 'package:pawgo/widgets/review_bottom_sheet.dart';
 import 'package:pawgo/screens/bookings_screen.dart';
 import 'package:pawgo/utils/distance_utils.dart';
@@ -22,8 +21,8 @@ import 'package:pawgo/utils/walk_nav_helper.dart';
 import 'package:pawgo/widgets/paw_progress_indicator.dart';
 import 'package:pawgo/widgets/walk_timeline.dart';
 import 'package:pawgo/widgets/walk_photos_tab.dart';
+import 'package:pawgo/widgets/chat_media_image.dart';
 import 'package:pawgo/utils/gps_broadcast_helpers.dart';
-import 'package:pawgo/utils/media_url_rewriter.dart';
 
 class ActiveWalkScreen extends StatefulWidget {
   const ActiveWalkScreen({
@@ -1858,15 +1857,9 @@ class _ActiveWalkScreenState extends State<ActiveWalkScreen>
             children: [
               Center(
                 child: InteractiveViewer(
-                  child: Image.network(
-                    rewriteMediaUrl(imageUrl,
-                            supabaseUrl: Env.current.supabaseUrl) ??
-                        imageUrl,
+                  child: ChatMediaImage(
+                    url: imageUrl,
                     fit: BoxFit.contain,
-                    headers: {'apikey': Env.current.supabaseAnonKey},
-                    loadingBuilder: (ctx, child, progress) => progress == null
-                        ? child
-                        : const Center(child: PawProgressIndicator(size: 24)),
                     errorBuilder: (_, __, ___) => Icon(
                       PhosphorIcons.imageBroken(),
                       size: 64,
