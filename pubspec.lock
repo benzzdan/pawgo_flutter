@@ -1173,6 +1173,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.2.0"
+  veriff_flutter:
+    dependency: "direct main"
+    description:
+      name: veriff_flutter
+      sha256: "47a4bbc7cc2c92a43db955febc9abaf288d00916fdfe4cb0b1301164c0bef9fb"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.6.0"
   vm_service:
     dependency: transitive
     description:
