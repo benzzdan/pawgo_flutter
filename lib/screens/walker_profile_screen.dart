@@ -6,6 +6,10 @@ import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/widgets/paw_progress_indicator.dart';
+import 'package:pawgo/widgets/walker_book_bar.dart';
+import 'package:pawgo/widgets/walker_hero_card.dart';
+import 'package:pawgo/widgets/walker_price_card.dart';
+import 'package:pawgo/widgets/walker_stat_chip.dart';
 
 class WalkerProfileScreen extends StatefulWidget {
   const WalkerProfileScreen({super.key});
@@ -98,19 +102,14 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
     return null;
   }
 
-  String _walkerInitials() {
-    final name = _walkerName();
-    final parts = name.split(' ');
-    if (parts.length >= 2) {
-      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    }
-    return name.isNotEmpty ? name[0].toUpperCase() : 'W';
-  }
-
   @override
   Widget build(BuildContext context) {
+    final hourlyRate = (_walker?['hourly_rate_mxn'] as num?)?.toDouble() ?? 0;
+    final canBook = !_isLoading && _error == null && _walker != null;
+
     return Scaffold(
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             // Header
@@ -155,6 +154,18 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
             ),
           ],
         ),
+      ),
+      // Sticky Book CTA — only enabled once walker data is loaded.
+      bottomNavigationBar: WalkerBookBar(
+        hourlyRateMxn: hourlyRate,
+        onBook: canBook
+            ? () {
+                Navigator.pushNamed(context, '/booking', arguments: {
+                  'walker_id': _walker?['id'],
+                  'walker': _walker,
+                });
+              }
+            : null,
       ),
     );
   }
@@ -210,309 +221,143 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
   }
 
   Widget _buildContent() {
-    return Stack(
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.lg,
+        AppSpacing.lg,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildProfileHeader(),
+          const SizedBox(height: AppSpacing.md),
+          _buildStatsRow(),
+          const SizedBox(height: AppSpacing.md),
+          _buildVerificationSection(),
+          const SizedBox(height: AppSpacing.md),
+          WalkerPriceCard(
+            hourlyRateMxn: (_walker?['hourly_rate_mxn'] as num?)?.toDouble() ?? 0,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          _buildAboutSection(),
+          const SizedBox(height: AppSpacing.md),
+          _buildReviewsSection(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileHeader() {
+    final verificationStatus =
+        _walker?['verification_status'] as String? ?? 'not_started';
+    return WalkerHeroCard(
+      name: _walkerName(),
+      avatarUrl: _walkerAvatarUrl(),
+      rating: (_walker?['avg_rating'] as num?)?.toDouble(),
+      totalWalks: (_walker?['total_walks'] as num?)?.toInt() ?? 0,
+      isVerified: verificationStatus == 'verified',
+    );
+  }
+
+  /// Row of stat chips under the hero — total walks, experience, and
+  /// verification status. Distance is intentionally omitted here because
+  /// the profile screen doesn't have access to the owner's search origin
+  /// (the Walker model from fetchWalkerById doesn't include distance_km).
+  Widget _buildStatsRow() {
+    final totalWalks = (_walker?['total_walks'] as num?)?.toInt() ?? 0;
+    final experienceYears =
+        (_walker?['experience_years'] as num?)?.toInt() ?? 0;
+    final backgroundChecked = _walker?['background_checked'] == true;
+
+    return Row(
       children: [
-        SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 80),
-          child: Column(
-            children: [
-              _buildProfileHeader(),
-              const SizedBox(height: 12),
-              _buildVerificationSection(),
-              const SizedBox(height: 12),
-              _buildAboutSection(),
-              const SizedBox(height: 12),
-              _buildReviewsSection(),
-              const SizedBox(height: 24),
-            ],
+        Expanded(
+          child: WalkerStatChip(
+            icon: PhosphorIcons.pawPrint(PhosphorIconsStyle.fill),
+            value: '$totalWalks',
+            label: 'Walks',
           ),
         ),
-        // Book Now CTA at bottom
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 16,
-                  offset: const Offset(0, -4),
-                ),
-              ],
-            ),
-            child: GestureDetector(
-              onTap: () {
-                Navigator.pushNamed(context, '/booking', arguments: {
-                  'walker_id': _walker?['id'],
-                  'walker': _walker,
-                });
-              },
-              child: Container(
-                height: 56,
-                decoration: BoxDecoration(
-                  color: AppColors.green600,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.green600.withValues(alpha: 0.35),
-                      blurRadius: 20,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(PhosphorIcons.calendarBlank(),
-                        color: Colors.white, size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Book Now - \$${(_walker?['hourly_rate_mxn'] as num?)?.toInt() ?? 0} MXN/hr',
-                      style: GoogleFonts.nunito(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: WalkerStatChip(
+            icon: PhosphorIcons.briefcase(PhosphorIconsStyle.fill),
+            value:
+                experienceYears > 0 ? '$experienceYears yr${experienceYears != 1 ? 's' : ''}' : 'New',
+            label: 'Experience',
+          ),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: WalkerStatChip(
+            icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill),
+            value: backgroundChecked ? 'Yes' : 'No',
+            label: 'Bg check',
+            iconColor:
+                backgroundChecked ? AppColors.green600 : AppColors.gray400,
           ),
         ),
       ],
     );
   }
 
-  Widget _buildProfileHeader() {
-    final avatarUrl = _walkerAvatarUrl();
-    final name = _walkerName();
-    final rating = (_walker?['avg_rating'] as num?)?.toDouble();
-    final hourlyRate = (_walker?['hourly_rate_mxn'] as num?)?.toInt() ?? 0;
-
-    return Container(
-      color: AppColors.white,
-      padding: const EdgeInsets.all(24),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Avatar
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [AppColors.orange400, AppColors.orange500],
-                  ),
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: avatarUrl != null
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(22),
-                        child: Image.network(avatarUrl, fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) {
-                          return Center(
-                            child: Text(
-                              _walkerInitials(),
-                              style: GoogleFonts.nunito(
-                                fontSize: 28,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                              ),
-                            ),
-                          );
-                        }),
-                      )
-                    : Center(
-                        child: Text(
-                          _walkerInitials(),
-                          style: GoogleFonts.nunito(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-              ),
-              if (_walker?['background_checked'] == true)
-                Positioned(
-                  bottom: -4,
-                  right: -4,
-                  child: Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: AppColors.blue500,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                    ),
-                    child: Icon(PhosphorIcons.shield(PhosphorIconsStyle.fill),
-                        color: Colors.white, size: 14),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(width: 16),
-          // Info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: GoogleFonts.nunito(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(PhosphorIcons.star(PhosphorIconsStyle.fill),
-                        size: 16, color: AppColors.orange500),
-                    const SizedBox(width: 4),
-                    Text(
-                      rating != null ? rating.toStringAsFixed(1) : 'New',
-                      style: GoogleFonts.nunito(
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    Text(
-                      ' (${_reviews.length} reviews)',
-                      style: GoogleFonts.nunito(
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    if (_walker?['is_enabled'] == true)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.green100,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: const BoxDecoration(
-                                color: AppColors.green500,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Available',
-                              style: GoogleFonts.nunito(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.green700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          // Price
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '\$$hourlyRate',
-                style: GoogleFonts.nunito(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              Text(
-                'MXN/hr',
-                style: GoogleFonts.nunito(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildVerificationSection() {
     final backgroundChecked = _walker?['background_checked'] == true;
-    final experienceYears =
-        (_walker?['experience_years'] as num?)?.toInt() ?? 0;
+    final verificationStatus =
+        _walker?['verification_status'] as String? ?? 'not_started';
+    final isIdVerified = verificationStatus == 'verified';
 
-    return Container(
-      color: AppColors.white,
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Verification & Trust',
-            style: GoogleFonts.nunito(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: AppColors.textPrimary,
+    // If nothing is verified, the section has no useful content — hide it
+    // entirely instead of rendering an empty card.
+    if (!backgroundChecked && !isIdVerified) return const SizedBox.shrink();
+
+    return Card(
+      elevation: 0,
+      color: AppColors.cardBackground,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        side: const BorderSide(color: AppColors.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Verification & Trust',
+              style: GoogleFonts.nunito(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: AppColors.textPrimary,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          if (backgroundChecked)
-            _VerificationBadge(
-              icon: PhosphorIcons.shield(PhosphorIconsStyle.fill),
-              iconColor: Colors.white,
-              bgColor: AppColors.green500,
-              gradientColors: [AppColors.green50, Color(0xFFECFDF5)],
-              title: 'Background Check Verified',
-              subtitle: 'Background check cleared',
-              checkColor: AppColors.green600,
-            ),
-          if (backgroundChecked) const SizedBox(height: 12),
-          // Stats
-          Row(
-            children: [
-              _StatBox(
-                  value: '${(_walker?['total_walks'] as num?)?.toInt() ?? 0}',
-                  label: 'Total Walks'),
-              const SizedBox(width: 12),
-              _StatBox(
-                  value: '$experienceYears yr${experienceYears != 1 ? 's' : ''}',
-                  label: 'Experience'),
-              const SizedBox(width: 12),
-              _StatBox(
-                  value: _reviews.isNotEmpty
-                      ? (_walker?['avg_rating'] as num?)?.toStringAsFixed(1) ?? '-'
-                      : '-',
-                  label: 'Avg Rating'),
+            const SizedBox(height: AppSpacing.md),
+            if (isIdVerified) ...[
+              const _VerificationBadge(
+                icon: Icons.verified_user,
+                iconColor: Colors.white,
+                bgColor: AppColors.green500,
+                gradientColors: [AppColors.green50, Color(0xFFECFDF5)],
+                title: 'ID Verified',
+                subtitle: 'Identity confirmed via Veriff',
+                checkColor: AppColors.green600,
+              ),
+              const SizedBox(height: AppSpacing.sm),
             ],
-          ),
-        ],
+            if (backgroundChecked)
+              _VerificationBadge(
+                icon: PhosphorIcons.shield(PhosphorIconsStyle.fill),
+                iconColor: Colors.white,
+                bgColor: AppColors.green500,
+                gradientColors: const [AppColors.green50, Color(0xFFECFDF5)],
+                title: 'Background Check Verified',
+                subtitle: 'Background check cleared',
+                checkColor: AppColors.green600,
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -521,31 +366,38 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
     final bio = _walker?['bio'] as String?;
     if (bio == null || bio.isEmpty) return const SizedBox.shrink();
 
-    return Container(
-      color: AppColors.white,
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'About',
-            style: GoogleFonts.nunito(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: AppColors.textPrimary,
+    return Card(
+      elevation: 0,
+      color: AppColors.cardBackground,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        side: const BorderSide(color: AppColors.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'About',
+              style: GoogleFonts.nunito(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: AppColors.textPrimary,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            bio,
-            style: GoogleFonts.nunito(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: const Color(0xFF666666),
-              height: 1.5,
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              bio,
+              style: GoogleFonts.nunito(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF666666),
+                height: 1.5,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -553,56 +405,63 @@ class _WalkerProfileScreenState extends State<WalkerProfileScreen> {
   Widget _buildReviewsSection() {
     final rating = (_walker?['avg_rating'] as num?)?.toDouble();
 
-    return Container(
-      color: AppColors.white,
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Reviews (${_reviews.length})',
-                style: GoogleFonts.nunito(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.textPrimary,
+    return Card(
+      elevation: 0,
+      color: AppColors.cardBackground,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        side: const BorderSide(color: AppColors.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Reviews (${_reviews.length})',
+                  style: GoogleFonts.nunito(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
-              ),
-              if (rating != null)
-                Row(
-                  children: [
-                    Icon(PhosphorIcons.star(PhosphorIconsStyle.fill),
-                        size: 18, color: AppColors.orange500),
-                    const SizedBox(width: 4),
-                    Text(
-                      rating.toStringAsFixed(1),
-                      style: GoogleFonts.nunito(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.textPrimary,
+                if (rating != null)
+                  Row(
+                    children: [
+                      Icon(PhosphorIcons.star(PhosphorIconsStyle.fill),
+                          size: 18, color: AppColors.orange500),
+                      const SizedBox(width: 4),
+                      Text(
+                        rating.toStringAsFixed(1),
+                        style: GoogleFonts.nunito(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.md),
+            if (_reviews.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                child: Text(
+                  'No reviews yet',
+                  style: GoogleFonts.nunito(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (_reviews.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Text(
-                'No reviews yet',
-                style: GoogleFonts.nunito(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            )
-          else
-            ..._reviews.map((review) => _ReviewCard(review: review)),
-        ],
+              )
+            else
+              ..._reviews.map((review) => _ReviewCard(review: review)),
+          ],
+        ),
       ),
     );
   }
@@ -672,47 +531,6 @@ class _VerificationBadge extends StatelessWidget {
           ),
           Icon(PhosphorIcons.check(), color: checkColor, size: 20),
         ],
-      ),
-    );
-  }
-}
-
-class _StatBox extends StatelessWidget {
-  final String value;
-  final String label;
-
-  const _StatBox({required this.value, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            Text(
-              value,
-              style: GoogleFonts.nunito(
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: GoogleFonts.nunito(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
