@@ -315,6 +315,15 @@ class NotificationService {
   StreamSubscription<NotificationData>? _foregroundSub;
   StreamSubscription<NotificationData>? _backgroundTapSub;
 
+  /// Trigger the OS notification-permission prompt without running the full
+  /// initialize() flow. Used by the permissions-priming screen in PR A so we
+  /// can ask for permission upfront and still fall back to the inline
+  /// initialize() request at point-of-use later.
+  ///
+  /// Returns true when the OS reports the permission as authorized or
+  /// provisional.
+  Future<bool> requestPermission() => _messaging.requestPermission();
+
   /// Request notification permissions, get FCM token, store it, set up message
   /// handlers, and listen for token refreshes.
   Future<void> initialize() async {

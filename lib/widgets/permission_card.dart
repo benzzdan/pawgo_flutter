@@ -24,12 +24,17 @@ class PermissionCard extends StatelessWidget {
     required this.status,
     required this.onAllow,
     required this.allowLabel,
+    this.allowButtonKey,
   });
 
   final IconData icon;
   final String title;
   final String body;
   final PermissionCardStatus status;
+
+  /// Optional key for the inner Allow button — useful for widget tests that
+  /// need to target one card's button without colliding with another card's.
+  final Key? allowButtonKey;
 
   /// Called when the user taps the Allow CTA. The screen is responsible for
   /// invoking the actual permission API (Geolocator / NotificationService)
@@ -153,6 +158,7 @@ class PermissionCard extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
+                key: allowButtonKey,
                 onPressed: onAllow,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.orange500,
