@@ -1,0 +1,18 @@
+{
+  "@@locale": "es",
+  "appTitle": "Pawgo",
+  "moodCalm": "Tranquilo",
+  "moodPlayful": "Juguetón",
+  "moodShy": "Tímido",
+  "moodAnxious": "Ansioso",
+  "moodPassiveAggressive": "Pasivo-agresivo",
+  "moodReactive": "Reactivo con otros perros",
+  "moodAggressive": "Agresivo",
+  "vaccinationPending": "Pendiente de revisión",
+  "vaccinationApproved": "Aprobada",
+  "vaccinationRejected": "Rechazada",
+  "vaccinationExpired": "Vencida",
+  "bookingErrorAggressiveNeedsExperienced": "Este perro necesita un paseador con experiencia (3+ años).",
+  "bookingErrorReactiveNoGroup": "Este perro no puede unirse a paseos grupales.",
+  "bookingErrorVaccinationRequired": "La cartilla de vacunación debe estar aprobada antes de reservar."
+}

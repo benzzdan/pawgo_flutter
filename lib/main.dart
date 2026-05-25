@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pawgo/l10n/app_localizations.dart';
 import 'package:pawgo/config/env.dart';
 import 'package:pawgo/config/firebase_options.dart';
 import 'package:pawgo/theme/app_theme.dart';
@@ -196,6 +197,8 @@ class PawgoApp extends StatelessWidget {
           theme: AppTheme.theme,
           darkTheme: AppTheme.darkTheme,
           themeMode: themeMode,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           initialRoute: initialRoute,
           onGenerateRoute: (settings) {
             final routes = <String, WidgetBuilder>{
