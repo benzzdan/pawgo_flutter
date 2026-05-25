@@ -23,23 +23,32 @@ class FindScreenLayout {
 }
 
 class AdvancedFilters {
+  final double? minDistanceKm;
   final double? maxDistanceKm;
   final double? minRate;
   final double? maxRate;
   final int? minExperience;
   final bool? backgroundChecked;
 
+  /// When true, walkers without a service_area (distance_km IS NULL on the
+  /// server) are dropped from the result. When false (default), they are
+  /// admitted and sort to the end. Only meaningful when min/maxDistanceKm
+  /// are set; it does NOT count as an active filter on its own.
+  final bool onlyShowInRange;
+
   const AdvancedFilters({
+    this.minDistanceKm,
     this.maxDistanceKm,
     this.minRate,
     this.maxRate,
     this.minExperience,
     this.backgroundChecked,
+    this.onlyShowInRange = false,
   });
 
   int get activeCount {
     int count = 0;
-    if (maxDistanceKm != null) count++;
+    if (minDistanceKm != null || maxDistanceKm != null) count++;
     if (minRate != null || maxRate != null) count++;
     if (minExperience != null) count++;
     if (backgroundChecked == true) count++;

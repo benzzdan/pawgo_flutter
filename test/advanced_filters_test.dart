@@ -1,43 +1,17 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pawgo/models/mock_data.dart';
-import 'package:pawgo/services/geocoding_service.dart';
+import 'package:pawgo/screens/find_screen.dart';
 
-/// Advanced filter model — mirrors what will be in find_screen.dart.
-class AdvancedFilters {
-  final double? maxDistanceKm;
-  final double? minRate;
-  final double? maxRate;
-  final int? minExperience;
-  final bool? backgroundChecked;
-
-  const AdvancedFilters({
-    this.maxDistanceKm,
-    this.minRate,
-    this.maxRate,
-    this.minExperience,
-    this.backgroundChecked,
-  });
-
-  int get activeCount {
-    int count = 0;
-    if (maxDistanceKm != null) count++;
-    if (minRate != null || maxRate != null) count++;
-    if (minExperience != null) count++;
-    if (backgroundChecked == true) count++;
-    return count;
-  }
-
-  bool get hasActiveFilters => activeCount > 0;
-}
-
+/// Re-implements the client-side filter logic that find_screen previously
+/// used so we can keep these unit tests exercising the same predicates.
+/// Once the server-side RPC takes over (PR B.4.5), find_screen no longer
+/// runs these checks — but the model semantics (which fields count as
+/// "active", how a range maps to one filter) still apply here.
 List<Walker> applyAdvancedFilters(
   List<Walker> walkers,
-  AdvancedFilters filters, {
-  double? searchLat,
-  double? searchLng,
-}) {
+  AdvancedFilters filters,
+) {
   var result = walkers;
-
   if (filters.minRate != null) {
     result = result.where((w) => w.hourlyRateMxn >= filters.minRate!).toList();
   }
@@ -52,9 +26,6 @@ List<Walker> applyAdvancedFilters(
   if (filters.backgroundChecked == true) {
     result = result.where((w) => w.backgroundChecked).toList();
   }
-  // Distance filter would use GeocodingService.haversineDistance
-  // but requires walker location data — skip in client-side filtering
-
   return result;
 }
 
@@ -99,21 +70,51 @@ void main() {
       expect(filters.hasActiveFilters, isFalse);
     });
 
-    test('activeCount counts each active filter', () {
+    test('activeCount counts each active filter (distance range counts as 1)', () {
       const filters = AdvancedFilters(
+        minDistanceKm: 1,
         maxDistanceKm: 10,
         minRate: 100,
         maxRate: 200,
         backgroundChecked: true,
       );
-      // maxDistanceKm: 1, rate range: 1 (min+max count as 1), backgroundChecked: 1
+      // distance range: 1, rate range: 1, backgroundChecked: 1 = 3
       expect(filters.activeCount, 3);
       expect(filters.hasActiveFilters, isTrue);
+    });
+
+    test('only maxDistanceKm (no min) still counts distance range as 1', () {
+      const filters = AdvancedFilters(maxDistanceKm: 10);
+      expect(filters.activeCount, 1);
+    });
+
+    test('only minDistanceKm (no max) still counts distance range as 1', () {
+      const filters = AdvancedFilters(minDistanceKm: 2);
+      expect(filters.activeCount, 1);
     });
 
     test('minExperience filter counts', () {
       const filters = AdvancedFilters(minExperience: 2);
       expect(filters.activeCount, 1);
+    });
+
+    test('onlyShowInRange alone does not count as an active filter', () {
+      // The toggle only affects how NULL-distance walkers are handled — it
+      // is not a filter on its own. Without min/max distance set, it is a
+      // no-op and should not bump activeCount.
+      const filters = AdvancedFilters(onlyShowInRange: true);
+      expect(filters.activeCount, 0);
+      expect(filters.hasActiveFilters, isFalse);
+    });
+
+    test('onlyShowInRange has a default of false', () {
+      const filters = AdvancedFilters();
+      expect(filters.onlyShowInRange, isFalse);
+    });
+
+    test('minDistanceKm defaults to null', () {
+      const filters = AdvancedFilters();
+      expect(filters.minDistanceKm, isNull);
     });
   });
 
