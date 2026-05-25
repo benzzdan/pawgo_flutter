@@ -9,6 +9,7 @@ import 'package:pawgo/services/geocoding_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:pawgo/widgets/paw_progress_indicator.dart';
+import 'package:pawgo/widgets/walker_filters_sheet.dart';
 
 class FindScreenLayout {
   static const double walkerCardSpacing = 16.0;
@@ -107,9 +108,13 @@ class _FindScreenState extends State<FindScreen> {
       _error = null;
     });
     try {
+      // Distance + price filters move to the RPC (migration 042). The
+      // remaining filters (minExperience, backgroundChecked, onlyShowInRange)
+      // still apply client-side in _applyAdvancedFilters below.
       final walkers = await WalkerService.fetchWalkers(
         latitude: _selectedLocation?.latitude,
         longitude: _selectedLocation?.longitude,
+        filters: _advancedFilters,
       );
       if (mounted) {
         setState(() {
@@ -182,19 +187,17 @@ class _FindScreenState extends State<FindScreen> {
     return _applyAdvancedFilters(result);
   }
 
+  /// Apply the filters the RPC does not support yet — minExperience,
+  /// backgroundChecked, and (when the proximity toggle is on) dropping
+  /// walkers without a service_area. Distance and price filters are
+  /// applied server-side via the nearby_walkers RPC (migration 042) and
+  /// are NOT reapplied here.
   List<Walker> _applyAdvancedFilters(List<Walker> walkers) {
-    if (!_advancedFilters.hasActiveFilters) return walkers;
+    if (!_advancedFilters.hasActiveFilters &&
+        !_advancedFilters.onlyShowInRange) {
+      return walkers;
+    }
     var result = walkers;
-    if (_advancedFilters.minRate != null) {
-      result = result
-          .where((w) => w.hourlyRateMxn >= _advancedFilters.minRate!)
-          .toList();
-    }
-    if (_advancedFilters.maxRate != null) {
-      result = result
-          .where((w) => w.hourlyRateMxn <= _advancedFilters.maxRate!)
-          .toList();
-    }
     if (_advancedFilters.minExperience != null) {
       result = result
           .where((w) => w.experienceYears >= _advancedFilters.minExperience!)
@@ -202,6 +205,14 @@ class _FindScreenState extends State<FindScreen> {
     }
     if (_advancedFilters.backgroundChecked == true) {
       result = result.where((w) => w.backgroundChecked).toList();
+    }
+    // "Only show walkers in this range" — drop walkers without a known
+    // service_area (distance unknown on the RPC). Only meaningful when a
+    // distance range is actually set; otherwise the toggle is a no-op.
+    final hasDistanceFilter = _advancedFilters.minDistanceKm != null ||
+        _advancedFilters.maxDistanceKm != null;
+    if (_advancedFilters.onlyShowInRange && hasDistanceFilter) {
+      result = result.where((w) => w.distanceKm != null).toList();
     }
     return result;
   }
@@ -213,15 +224,18 @@ class _FindScreenState extends State<FindScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => _AdvancedFiltersSheet(
-        current: _advancedFilters,
+      builder: (context) => WalkerFiltersSheet(
+        initial: _advancedFilters,
         onApply: (filters) {
-          setState(() => _advancedFilters = filters);
           Navigator.pop(context);
+          setState(() => _advancedFilters = filters);
+          // Re-fetch from the RPC with the new range params.
+          _loadWalkers();
         },
         onReset: () {
-          setState(() => _advancedFilters = const AdvancedFilters());
           Navigator.pop(context);
+          setState(() => _advancedFilters = const AdvancedFilters());
+          _loadWalkers();
         },
       ),
     );
@@ -855,266 +869,6 @@ class _WalkerCard extends StatelessWidget {
                       ),
                     ),
                   ],
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AdvancedFiltersSheet extends StatefulWidget {
-  final AdvancedFilters current;
-  final ValueChanged<AdvancedFilters> onApply;
-  final VoidCallback onReset;
-
-  const _AdvancedFiltersSheet({
-    required this.current,
-    required this.onApply,
-    required this.onReset,
-  });
-
-  @override
-  State<_AdvancedFiltersSheet> createState() => _AdvancedFiltersSheetState();
-}
-
-class _AdvancedFiltersSheetState extends State<_AdvancedFiltersSheet> {
-  late double _distanceKm;
-  late RangeValues _priceRange;
-  late int _minExperience;
-  late bool _bgChecked;
-  late bool _distanceEnabled;
-
-  @override
-  void initState() {
-    super.initState();
-    _distanceKm = widget.current.maxDistanceKm ?? 10;
-    _distanceEnabled = widget.current.maxDistanceKm != null;
-    _priceRange = RangeValues(
-      widget.current.minRate ?? 50,
-      widget.current.maxRate ?? 500,
-    );
-    _minExperience = widget.current.minExperience ?? 0;
-    _bgChecked = widget.current.backgroundChecked ?? false;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Handle
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.gray400,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Advanced Filters',
-              style: GoogleFonts.nunito(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Distance
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Distance Radius',
-                  style: GoogleFonts.nunito(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                Text(
-                  _distanceEnabled ? '${_distanceKm.round()} km' : 'Any',
-                  style: GoogleFonts.nunito(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-            Slider(
-              value: _distanceKm,
-              min: 1,
-              max: 50,
-              divisions: 49,
-              activeColor: AppColors.orange500,
-              onChanged: (v) => setState(() {
-                _distanceKm = v;
-                _distanceEnabled = true;
-              }),
-            ),
-            const SizedBox(height: 12),
-
-            // Price Range
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Price Range',
-                  style: GoogleFonts.nunito(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                Text(
-                  '\$${_priceRange.start.round()} - \$${_priceRange.end.round()}',
-                  style: GoogleFonts.nunito(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-            RangeSlider(
-              values: _priceRange,
-              min: 50,
-              max: 500,
-              divisions: 45,
-              activeColor: AppColors.orange500,
-              onChanged: (v) => setState(() => _priceRange = v),
-            ),
-            const SizedBox(height: 12),
-
-            // Experience
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Minimum Experience',
-                  style: GoogleFonts.nunito(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                DropdownButton<int>(
-                  value: _minExperience,
-                  underline: const SizedBox(),
-                  style: GoogleFonts.nunito(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
-                  ),
-                  items: List.generate(11, (i) => i).map((yr) {
-                    return DropdownMenuItem(
-                      value: yr,
-                      child: Text(yr == 0 ? 'Any' : '$yr+ years'),
-                    );
-                  }).toList(),
-                  onChanged: (v) => setState(() => _minExperience = v ?? 0),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Background Checked
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Background Checked',
-                  style: GoogleFonts.nunito(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                Switch(
-                  value: _bgChecked,
-                  activeColor: AppColors.orange500,
-                  onChanged: (v) => setState(() => _bgChecked = v),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // Buttons
-            Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: widget.onReset,
-                    child: Container(
-                      height: 48,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: AppColors.gray400),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Center(
-                        child: Text(
-                          'Reset',
-                          style: GoogleFonts.nunito(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () {
-                      widget.onApply(AdvancedFilters(
-                        maxDistanceKm:
-                            _distanceEnabled ? _distanceKm : null,
-                        minRate: _priceRange.start > 50
-                            ? _priceRange.start
-                            : null,
-                        maxRate: _priceRange.end < 500
-                            ? _priceRange.end
-                            : null,
-                        minExperience:
-                            _minExperience > 0 ? _minExperience : null,
-                        backgroundChecked: _bgChecked ? true : null,
-                      ));
-                    },
-                    child: Container(
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: AppColors.orange500,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Center(
-                        child: Text(
-                          'Apply',
-                          style: GoogleFonts.nunito(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
                 ),
               ],
             ),

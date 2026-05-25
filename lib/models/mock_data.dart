@@ -14,6 +14,13 @@ class Walker {
   final int experienceYears;
   final DateTime? createdAt;
 
+  /// Distance in kilometers from the search origin. Only populated by
+  /// `Walker.fromRpc` (the nearby_walkers RPC returns this). NULL when
+  /// the walker has no service_area on the backend, or when the walker
+  /// was fetched without an origin point. The find screen uses this to
+  /// honor the "Only show walkers in this range" toggle.
+  final double? distanceKm;
+
   const Walker({
     required this.id,
     required this.userId,
@@ -27,6 +34,7 @@ class Walker {
     this.bio,
     this.experienceYears = 0,
     this.createdAt,
+    this.distanceKm,
   });
 
   factory Walker.fromJson(Map<String, dynamic> json) {
@@ -49,7 +57,8 @@ class Walker {
     );
   }
 
-  /// Parse from the nearby_walkers RPC result (flat row, no nested `users`).
+  /// Parse from the nearby_walkers RPC result (flat row, no nested `users`,
+  /// and including a computed `distance_km` field per migration 042).
   factory Walker.fromRpc(Map<String, dynamic> json) {
     return Walker(
       id: json['id'] as String,
@@ -66,6 +75,7 @@ class Walker {
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
           : null,
+      distanceKm: (json['distance_km'] as num?)?.toDouble(),
     );
   }
 

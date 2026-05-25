@@ -2,6 +2,7 @@ import 'dart:developer' as developer;
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pawgo/models/mock_data.dart';
+import 'package:pawgo/screens/find_screen.dart' show AdvancedFilters;
 
 class WalkerService {
   static final _supabase = Supabase.instance.client;
@@ -11,23 +12,71 @@ class WalkerService {
     developer.log(message, name: _tag);
   }
 
-  /// Fetch all enabled walkers with their user profile info.
+  /// Build the param map sent to the `nearby_walkers` RPC.
   ///
-  /// When [latitude] and [longitude] are provided, walkers are sorted
-  /// by proximity using the PostGIS-backed `nearby_walkers` RPC function.
-  /// Otherwise falls back to default avg_rating sort.
+  /// Range bounds from [filters] are forwarded as their snake_case RPC
+  /// param names. Bounds that are null on the model are OMITTED from the
+  /// map entirely so the RPC's defaults kick in (NULL → no constraint on
+  /// that side). minExperience / backgroundChecked / onlyShowInRange are
+  /// NOT forwarded — those are filters the RPC does not support yet and
+  /// are applied client-side (see [_applyAdvancedFilters] in find_screen).
+  ///
+  /// Exposed as a public helper so it can be unit-tested without touching
+  /// Supabase initialization.
+  static Map<String, dynamic> buildNearbyWalkersParams({
+    required double latitude,
+    required double longitude,
+    AdvancedFilters? filters,
+  }) {
+    final params = <String, dynamic>{
+      'search_lat': latitude,
+      'search_lng': longitude,
+    };
+    if (filters == null) return params;
+
+    if (filters.minDistanceKm != null) {
+      params['min_distance_km'] = filters.minDistanceKm;
+    }
+    if (filters.maxDistanceKm != null) {
+      params['max_distance_km'] = filters.maxDistanceKm;
+    }
+    if (filters.minRate != null) {
+      params['min_price_mxn'] = filters.minRate;
+    }
+    if (filters.maxRate != null) {
+      params['max_price_mxn'] = filters.maxRate;
+    }
+    return params;
+  }
+
+  /// Fetch enabled + verified walkers from the backend.
+  ///
+  /// When [latitude] and [longitude] are provided, walkers are sorted by
+  /// proximity using the PostGIS-backed `nearby_walkers` RPC (migration
+  /// 042). Optional [filters] forward their range bounds to the RPC so
+  /// the server can do distance + price filtering — the client only
+  /// applies the filters the RPC doesn't support (minExperience,
+  /// backgroundChecked, onlyShowInRange dropping NULL-distance walkers).
+  ///
+  /// When lat/lng are omitted, falls back to default avg_rating sort
+  /// (no proximity filtering possible without an origin point).
   static Future<List<Walker>> fetchWalkers({
     double? latitude,
     double? longitude,
+    AdvancedFilters? filters,
   }) async {
     try {
       if (latitude != null && longitude != null) {
-        _log('fetchWalkers: proximity search lat=$latitude lng=$longitude');
-        final data = await _supabase.rpc('nearby_walkers', params: {
-          'search_lat': latitude,
-          'search_lng': longitude,
-        });
-        final walkers = (data as List).map((e) => Walker.fromRpc(e)).toList();
+        final params = buildNearbyWalkersParams(
+          latitude: latitude,
+          longitude: longitude,
+          filters: filters,
+        );
+        _log(
+            'fetchWalkers: proximity search lat=$latitude lng=$longitude params=$params');
+        final data = await _supabase.rpc('nearby_walkers', params: params);
+        final walkers =
+            (data as List).map((e) => Walker.fromRpc(e)).toList();
         _log('fetchWalkers: got ${walkers.length} walkers (proximity)');
         return walkers;
       }
