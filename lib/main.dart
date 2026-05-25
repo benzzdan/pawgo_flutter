@@ -34,6 +34,7 @@ import 'package:pawgo/screens/alternative_walkers_screen.dart';
 import 'package:pawgo/screens/walker_verification_screen.dart';
 import 'package:pawgo/screens/dog_profile_form_screen.dart';
 import 'package:pawgo/models/dog.dart';
+import 'package:pawgo/services/auth_gate_router.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:pawgo/services/ad_service.dart';
 import 'package:pawgo/services/analytics_service.dart';
@@ -42,6 +43,7 @@ import 'package:pawgo/services/role_service.dart';
 import 'package:pawgo/services/theme_service.dart';
 import 'package:pawgo/services/auth_service.dart';
 import 'package:pawgo/services/notification_service.dart';
+import 'package:pawgo/screens/welcome_screen.dart';
 import 'package:pawgo/screens/bookings_screen.dart';
 import 'package:pawgo/widgets/review_bottom_sheet.dart';
 
@@ -296,21 +298,30 @@ class _AuthGateState extends State<_AuthGate> {
         if (DefaultFirebaseOptions.isConfigured) {
           NotificationService.instance.initialize();
         }
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            Navigator.pushReplacementNamed(context, '/home');
-            // After navigation settles, check for an unreviewed completed walk.
-            // Guard prevents multiple concurrent checks if both signedIn and
-            // tokenRefreshed fire before the first check runs.
-            if (!_reviewCheckScheduled) {
+        // Decide destination based on users.onboarding_completed_at:
+        //   - NULL → /welcome (new welcome → role → permissions → first-step flow)
+        //   - non-null → /home (returning user)
+        // We schedule one async route decision per signedIn / tokenRefreshed
+        // event, then post-frame to it.
+        () async {
+          final dest = userId == null
+              ? '/welcome'
+              : await AuthGateRouter().destinationFor(userId);
+          if (!mounted) return;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            Navigator.pushReplacementNamed(context, dest);
+            // After navigation settles, check for an unreviewed completed walk
+            // — but only if we landed on /home (no point on /welcome).
+            if (dest == '/home' && !_reviewCheckScheduled) {
               _reviewCheckScheduled = true;
               Future.delayed(
                 const Duration(milliseconds: 500),
                 _checkPendingReviewOnStartup,
               );
             }
-          }
-        });
+          });
+        }();
         // Resume GPS broadcast if walker has an active walk
         GpsBroadcastService.instance.resumeIfActiveWalk();
       } else if (event == AuthChangeEvent.signedOut) {
@@ -325,7 +336,11 @@ class _AuthGateState extends State<_AuthGate> {
         }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && ModalRoute.of(context)?.settings.name != '/') {
-            Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+            // Land on /welcome — the new logged-out home — instead of
+            // sliding back to the bare `/` (which used to show SignInScreen
+            // directly). The welcome screen has its own Log In link.
+            Navigator.pushNamedAndRemoveUntil(
+                context, '/welcome', (route) => false);
           }
         });
       }
@@ -384,6 +399,9 @@ class _AuthGateState extends State<_AuthGate> {
 
   @override
   Widget build(BuildContext context) {
-    return const SignInScreen();
+    // The bare `/` route renders the welcome screen for logged-out users.
+    // Logged-in users get pushed away from here by the auth-state listener
+    // above (post-frame, after the route table is up).
+    return const WelcomeScreen();
   }
 }
