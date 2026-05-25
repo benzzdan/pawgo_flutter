@@ -58,7 +58,7 @@ class LegalAcceptanceScreen extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
           child: ListView.separated(
             itemCount: sections.length + 1,
-            separatorBuilder: (_, __) =>
+            separatorBuilder: (_, _) =>
                 const SizedBox(height: AppSpacing.md),
             itemBuilder: (context, index) {
               if (index == 0) {
