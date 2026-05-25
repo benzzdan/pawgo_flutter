@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" fill="none">
+  <!-- TODO(designer): replace with KOBI-style outlined poodle illustration + avatar accents. -->
+  <!-- Placeholder: simple outlined dog head with small circular avatar accents -->
+  <!-- (matches the warm brand palette: cacaoBrown #4A2C2A, warmCaramel #C07D4D, goldenPaw #F4A832). -->
+
+  <!-- Avatar accent dots arranged around the hero -->
+  <circle cx="40" cy="50" r="14" fill="#F4A832" stroke="#4A2C2A" stroke-width="2"/>
+  <circle cx="200" cy="60" r="12" fill="#C07D4D" stroke="#4A2C2A" stroke-width="2"/>
+  <circle cx="30" cy="170" r="10" fill="#C07D4D" stroke="#4A2C2A" stroke-width="2"/>
+  <circle cx="210" cy="180" r="14" fill="#F4A832" stroke="#4A2C2A" stroke-width="2"/>
+  <circle cx="115" cy="20"  r="9"  fill="#F4A832" stroke="#4A2C2A" stroke-width="2"/>
+
+  <!-- Hero outlined head -->
+  <ellipse cx="120" cy="135" rx="62" ry="55" fill="#FDF8F2" stroke="#4A2C2A" stroke-width="4"/>
+
+  <!-- Left ear -->
+  <path d="M70 100 Q55 65 88 70 Q95 88 90 110 Z"
+        fill="#FDF8F2" stroke="#4A2C2A" stroke-width="4" stroke-linejoin="round"/>
+  <!-- Right ear -->
+  <path d="M170 100 Q185 65 152 70 Q145 88 150 110 Z"
+        fill="#FDF8F2" stroke="#4A2C2A" stroke-width="4" stroke-linejoin="round"/>
+
+  <!-- Eyes -->
+  <circle cx="100" cy="130" r="5" fill="#4A2C2A"/>
+  <circle cx="140" cy="130" r="5" fill="#4A2C2A"/>
+
+  <!-- Snout -->
+  <ellipse cx="120" cy="158" rx="20" ry="14" fill="#FFF5E6" stroke="#4A2C2A" stroke-width="3"/>
+  <!-- Nose -->
+  <ellipse cx="120" cy="154" rx="7" ry="5" fill="#4A2C2A"/>
+  <!-- Smile -->
+  <path d="M105 168 Q120 178 135 168" fill="none" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round"/>
+</svg>
