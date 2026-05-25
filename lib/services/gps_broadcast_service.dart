@@ -140,32 +140,50 @@ class GpsBroadcastService {
   }
 
   Future<bool> _ensureLocationPermission() async {
-    lastPermissionError = null;
+    final result = await requestLocationPermissionInteractive();
+    lastPermissionError = result.errorMessage;
+    return result.granted;
+  }
 
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+  /// Drives the OS location-permission flow without starting a broadcast.
+  ///
+  /// Use this from any screen that needs to prime / re-check location access
+  /// (e.g. the permissions-priming screen the new welcome flow shows after
+  /// sign-up). Returns a [LocationPermissionResult] with:
+  /// - [LocationPermissionResult.granted] — whether the app currently has
+  ///   permission to read coarse / fine location, and
+  /// - [LocationPermissionResult.errorMessage] — a user-facing reason when
+  ///   `granted == false` (services disabled, denied, denied-forever).
+  ///
+  /// Side effects: may trigger the OS permission dialog via
+  /// `Geolocator.requestPermission()`. Does not start GPS broadcasting.
+  static Future<LocationPermissionResult>
+      requestLocationPermissionInteractive() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      lastPermissionError = 'Location services are disabled. Please enable GPS in your device settings.';
+      const msg = 'Location services are disabled. Please enable GPS in your device settings.';
       debugPrint('Location services are disabled');
-      return false;
+      return const LocationPermissionResult(granted: false, errorMessage: msg);
     }
 
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        lastPermissionError = 'Location permission is required to broadcast your GPS position during walks.';
+        const msg = 'Location permission is required to broadcast your GPS position during walks.';
         debugPrint('Location permission denied');
-        return false;
+        return const LocationPermissionResult(
+            granted: false, errorMessage: msg);
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      lastPermissionError = 'Location permission was permanently denied. Please enable it in Settings > Pawgo > Location.';
+      const msg = 'Location permission was permanently denied. Please enable it in Settings > Pawgo > Location.';
       debugPrint('Location permission permanently denied');
-      return false;
+      return const LocationPermissionResult(granted: false, errorMessage: msg);
     }
 
-    return true;
+    return const LocationPermissionResult(granted: true, errorMessage: null);
   }
 
   Future<void> _captureAndSendPosition() async {
@@ -193,4 +211,18 @@ class GpsBroadcastService {
       debugPrint('Error capturing/sending GPS position: $e');
     }
   }
+}
+
+/// Outcome of [GpsBroadcastService.requestLocationPermissionInteractive].
+///
+/// [errorMessage] is non-null whenever [granted] is false, carrying a
+/// user-facing reason (services disabled, denied, denied-forever).
+class LocationPermissionResult {
+  const LocationPermissionResult({
+    required this.granted,
+    required this.errorMessage,
+  });
+
+  final bool granted;
+  final String? errorMessage;
 }
