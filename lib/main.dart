@@ -44,6 +44,10 @@ import 'package:pawgo/services/theme_service.dart';
 import 'package:pawgo/services/auth_service.dart';
 import 'package:pawgo/services/notification_service.dart';
 import 'package:pawgo/screens/welcome_screen.dart';
+import 'package:pawgo/screens/permissions_priming_screen.dart';
+import 'package:pawgo/screens/dog_onboarding_intro_screen.dart';
+import 'package:pawgo/screens/legal_acceptance_screen.dart';
+import 'package:pawgo/config/legal_placeholder.dart' show LegalDoc;
 import 'package:pawgo/screens/bookings_screen.dart';
 import 'package:pawgo/widgets/review_bottom_sheet.dart';
 
@@ -252,6 +256,22 @@ class PawgoApp extends StatelessWidget {
                   initial: args is Dog ? args : null,
                 );
               },
+              // ----- Onboarding entry flow (PR A) ---------------------------
+              '/welcome': (context) => const WelcomeScreen(),
+              '/login': (context) => const SignInScreen(),
+              '/permissions': (context) {
+                final args = ModalRoute.of(context)?.settings.arguments;
+                final role = args is Map && args['role'] is String
+                    ? args['role'] as String
+                    : 'owner';
+                return PermissionsPrimingScreen(role: role);
+              },
+              '/dog-onboarding': (context) =>
+                  const DogOnboardingIntroScreen(),
+              '/legal/terms': (context) =>
+                  const LegalAcceptanceScreen(doc: LegalDoc.terms),
+              '/legal/privacy': (context) =>
+                  const LegalAcceptanceScreen(doc: LegalDoc.privacy),
             };
             final builder = routes[settings.name];
             if (builder != null) {
