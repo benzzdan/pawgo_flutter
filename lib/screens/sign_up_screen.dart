@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:pawgo/config/legal.dart';
+import 'package:pawgo/config/legal_placeholder.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -21,6 +23,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _loading = false;
   String? _error;
   bool _obscurePassword = true;
+  bool _legalAccepted = false;
+
+  /// Role passed in from /welcome. Falls back to 'owner' if missing (when
+  /// the user arrives at /signup through legacy code paths that don't pass
+  /// the role arg yet).
+  String _role = 'owner';
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map && args['role'] is String) {
+      _role = args['role'] as String;
+    }
+  }
 
   @override
   void dispose() {
@@ -43,6 +60,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
       setState(() => _error = 'Password must be at least 6 characters');
       return;
     }
+    if (!_legalAccepted) {
+      // Should be unreachable because the button is disabled, but keep this
+      // as a safety net in case of widget-tree edge cases.
+      setState(() => _error =
+          'Please accept the Terms of Use and Privacy Policy to continue');
+      return;
+    }
 
     setState(() {
       _loading = true;
@@ -58,9 +82,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
       if (!mounted) return;
 
+      // Persist legal acceptance metadata as soon as we have a user row.
+      // The auto-create trigger has already inserted into public.users; we
+      // just stamp the accepted versions + timestamps. If there's no
+      // session yet (email confirmation required), this still runs because
+      // the session-less response still carries the user id and the user
+      // is authenticated by virtue of the signUp call from the client.
+      final userId = response.user?.id;
+      if (userId != null) {
+        await _writeLegalAcceptance(userId);
+      }
+
+      if (!mounted) return;
+
       if (response.user != null && response.session != null) {
         AnalyticsService.instance.userSignedUp();
-        Navigator.pushReplacementNamed(context, '/home');
+        // Hand control to the permissions-priming screen, which then
+        // routes to /walker-application or /dog-onboarding based on role.
+        Navigator.pushReplacementNamed(
+          context,
+          '/permissions',
+          arguments: {'role': _role},
+        );
       } else if (response.user != null && response.session == null) {
         AnalyticsService.instance.userSignedUp();
         // Email confirmation required
@@ -87,6 +130,34 @@ class _SignUpScreenState extends State<SignUpScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Stamps `users.terms_*` and `users.privacy_*` with the current versions
+  /// and acceptance timestamp. Safe to call even when there's no session
+  /// (the row exists thanks to the auto-create trigger on auth.users; we
+  /// can update it because the signUp call set the auth context).
+  Future<void> _writeLegalAcceptance(String userId) async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    try {
+      await Supabase.instance.client
+          .from('users')
+          .update({
+            'terms_version': kTermsVersion,
+            'terms_accepted_at': now,
+            'privacy_version': kPrivacyVersion,
+            'privacy_accepted_at': now,
+          })
+          .eq('id', userId);
+    } catch (e) {
+      // Don't fail the sign-up flow if the legal write fails — log only.
+      // The user can be re-prompted on next launch once the columns NULL.
+      debugPrint('Failed to persist legal acceptance: $e');
+    }
+  }
+
+  void _openLegal(BuildContext context, LegalDoc doc) {
+    final route = doc == LegalDoc.terms ? '/legal/terms' : '/legal/privacy';
+    Navigator.pushNamed(context, route);
   }
 
   void _showConfirmationDialog() {
@@ -233,15 +304,42 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 24),
-                  // Sign Up Button
+                  const SizedBox(height: 16),
+                  // Terms / Privacy acceptance — submit is disabled until on.
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 32,
+                        child: Checkbox(
+                          key: const Key('signUpLegalCheckbox'),
+                          value: _legalAccepted,
+                          onChanged: (v) =>
+                              setState(() => _legalAccepted = v ?? false),
+                          activeColor: AppColors.orange500,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: _buildLegalRichText(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  // Sign Up Button — disabled until legal box is on.
                   GestureDetector(
-                    onTap: _loading ? null : _signUp,
+                    key: const Key('signUpSubmitButton'),
+                    onTap: (_loading || !_legalAccepted) ? null : _signUp,
                     child: Container(
                       height: 56,
                       decoration: BoxDecoration(
-                        color:
-                            _loading ? AppColors.orange400 : AppColors.orange500,
+                        color: !_legalAccepted
+                            ? AppColors.border
+                            : (_loading
+                                ? AppColors.orange400
+                                : AppColors.orange500),
                         borderRadius: BorderRadius.circular(18),
                         boxShadow: [
                           BoxShadow(
@@ -297,6 +395,57 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Bilingual T&C/Privacy acceptance line with inline tappable links.
+  /// Each link span gets a stable [Key] (via [WidgetSpan]) so widget tests
+  /// can locate it without relying on visible substrings.
+  Widget _buildLegalRichText(BuildContext context) {
+    final linkStyle = GoogleFonts.nunito(
+      fontSize: 13,
+      fontWeight: FontWeight.w700,
+      color: AppColors.orange500,
+      decoration: TextDecoration.underline,
+    );
+    final baseStyle = GoogleFonts.nunito(
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+      color: AppColors.textSecondary,
+      height: 1.4,
+    );
+
+    return RichText(
+      text: TextSpan(
+        style: baseStyle,
+        children: [
+          const TextSpan(
+            text:
+                'Acepto los / I accept the ',
+          ),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.baseline,
+            baseline: TextBaseline.alphabetic,
+            child: InkWell(
+              key: const Key('signUpLegalTermsLink'),
+              onTap: () => _openLegal(context, LegalDoc.terms),
+              child: Text('Términos de Uso / Terms of Use', style: linkStyle),
+            ),
+          ),
+          const TextSpan(text: ' y la / and the '),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.baseline,
+            baseline: TextBaseline.alphabetic,
+            child: InkWell(
+              key: const Key('signUpLegalPrivacyLink'),
+              onTap: () => _openLegal(context, LegalDoc.privacy),
+              child: Text('Política de Privacidad / Privacy Policy',
+                  style: linkStyle),
+            ),
+          ),
+          const TextSpan(text: '.'),
+        ],
       ),
     );
   }
