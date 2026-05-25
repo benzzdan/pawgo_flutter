@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" fill="none">
+  <!-- TODO(designer): replace with a friendly "Let's meet your dog!" illustration. -->
+  <!-- Placeholder: stylized dog face inside a warm circular badge — matches brand palette. -->
+
+  <!-- Soft warm circle background -->
+  <circle cx="120" cy="120" r="100" fill="#FFEDD5" stroke="#F4A832" stroke-width="3"/>
+
+  <!-- Dog head -->
+  <ellipse cx="120" cy="130" rx="55" ry="48" fill="#C07D4D" stroke="#4A2C2A" stroke-width="3"/>
+
+  <!-- Ears -->
+  <path d="M75 105 Q60 75 90 80 Q95 95 88 115 Z"
+        fill="#C07D4D" stroke="#4A2C2A" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M165 105 Q180 75 150 80 Q145 95 152 115 Z"
+        fill="#C07D4D" stroke="#4A2C2A" stroke-width="3" stroke-linejoin="round"/>
+
+  <!-- Snout -->
+  <ellipse cx="120" cy="155" rx="22" ry="16" fill="#FFF5E6" stroke="#4A2C2A" stroke-width="3"/>
+  <!-- Nose -->
+  <ellipse cx="120" cy="150" rx="7" ry="5" fill="#4A2C2A"/>
+  <!-- Smile -->
+  <path d="M105 165 Q120 175 135 165" fill="none" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Eyes (closed/happy) -->
+  <path d="M95 120 Q102 116 108 122" fill="none" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round"/>
+  <path d="M132 120 Q139 116 145 122" fill="none" stroke="#4A2C2A" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Heart accent above -->
+  <path d="M120 40 C115 32, 100 32, 100 45 C100 55, 120 70, 120 70 C120 70, 140 55, 140 45 C140 32, 125 32, 120 40 Z"
+        fill="#F4A832" stroke="#4A2C2A" stroke-width="2"/>
+</svg>
