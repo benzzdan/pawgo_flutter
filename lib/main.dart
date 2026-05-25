@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pawgo/l10n/app_localizations.dart';
 import 'package:pawgo/config/env.dart';
 import 'package:pawgo/config/firebase_options.dart';
 import 'package:pawgo/theme/app_theme.dart';
@@ -31,6 +32,8 @@ import 'package:pawgo/screens/walk_request_screen.dart';
 import 'package:pawgo/screens/notification_preferences_screen.dart';
 import 'package:pawgo/screens/alternative_walkers_screen.dart';
 import 'package:pawgo/screens/walker_verification_screen.dart';
+import 'package:pawgo/screens/dog_profile_form_screen.dart';
+import 'package:pawgo/models/dog.dart';
 import 'package:pawgo/services/gps_broadcast_service.dart';
 import 'package:pawgo/services/ad_service.dart';
 import 'package:pawgo/services/analytics_service.dart';
@@ -197,6 +200,8 @@ class PawgoApp extends StatelessWidget {
           theme: AppTheme.theme,
           darkTheme: AppTheme.darkTheme,
           themeMode: themeMode,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           initialRoute: initialRoute,
           onGenerateRoute: (settings) {
             final routes = <String, WidgetBuilder>{
@@ -239,6 +244,12 @@ class PawgoApp extends StatelessWidget {
                   const AlternativeWalkersScreen(),
               '/walker-verification': (context) =>
                   const WalkerVerificationScreen(),
+              '/dog-profile-form': (context) {
+                final args = ModalRoute.of(context)?.settings.arguments;
+                return DogProfileFormScreen(
+                  initial: args is Dog ? args : null,
+                );
+              },
             };
             final builder = routes[settings.name];
             if (builder != null) {

@@ -1,0 +1,18 @@
+{
+  "@@locale": "en",
+  "appTitle": "Pawgo",
+  "moodCalm": "Calm",
+  "moodPlayful": "Playful",
+  "moodShy": "Shy",
+  "moodAnxious": "Anxious",
+  "moodPassiveAggressive": "Passive-aggressive",
+  "moodReactive": "Reactive to dogs",
+  "moodAggressive": "Aggressive",
+  "vaccinationPending": "Pending review",
+  "vaccinationApproved": "Approved",
+  "vaccinationRejected": "Rejected",
+  "vaccinationExpired": "Expired",
+  "bookingErrorAggressiveNeedsExperienced": "This dog requires an experienced walker (3+ years).",
+  "bookingErrorReactiveNoGroup": "This dog can't join group walks.",
+  "bookingErrorVaccinationRequired": "Vaccination card must be approved before booking."
+}

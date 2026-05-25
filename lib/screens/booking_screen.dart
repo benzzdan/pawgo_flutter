@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pawgo/l10n/app_localizations.dart';
+import 'package:pawgo/models/dog.dart';
+import 'package:pawgo/services/booking_rules.dart';
 import 'package:pawgo/theme/app_theme.dart';
 import 'package:pawgo/services/analytics_service.dart';
 import 'package:pawgo/services/error_handler.dart';
@@ -34,6 +37,10 @@ class _BookingScreenState extends State<BookingScreen> {
   TimeOfDay _selectedTime = TimeOfDay.now();
   int _durationMinutes = 60;
   String _notes = '';
+  // Currently the UI only books solo walks. Group walks land behind a feature
+  // flag — when introduced, expose a toggle that updates this and re-evaluates
+  // the rules engine for every dog.
+  final WalkType _selectedWalkType = WalkType.solo;
 
   // Validation state
   String? _dateTimeError;
@@ -66,13 +73,18 @@ class _BookingScreenState extends State<BookingScreen> {
 
       final data = await withRetry(() => _supabase
           .from('dogs')
-          .select('id, name, breed, age_years, weight_kg, photo_url')
+          .select(
+            'id, owner_id, name, breed, age_years, weight_kg, photo_url, '
+            'temperament, vaccination_status, vaccination_expires_at',
+          )
           .eq('owner_id', userId));
 
       setState(() {
         _dogs = List<Map<String, dynamic>>.from(data);
         _loadingDogs = false;
-        if (_dogs.length == 1) {
+        // Auto-select the only dog when the rules allow it. Don't lock the
+        // user into a chip they can't actually book on.
+        if (_dogs.length == 1 && _ruleFor(_dogs[0]).allowed) {
           _selectedDogId = _dogs[0]['id'] as String;
         }
       });
@@ -99,6 +111,19 @@ class _BookingScreenState extends State<BookingScreen> {
 
   int _hourlyRate() {
     return (_walker?['hourly_rate_mxn'] as num?)?.toInt() ?? 0;
+  }
+
+  int _walkerExperienceYears() {
+    return (_walker?['experience_years'] as num?)?.toInt() ?? 0;
+  }
+
+  /// Runs [evaluateBookingRules] against a Supabase dog row.
+  BookingRuleResult _ruleFor(Map<String, dynamic> dogRow) {
+    return evaluateBookingRules(
+      dog: Dog.fromMap(dogRow),
+      walkerExperienceYears: _walkerExperienceYears(),
+      walkType: _selectedWalkType,
+    );
   }
 
   double _totalPrice() {
@@ -164,6 +189,7 @@ class _BookingScreenState extends State<BookingScreen> {
           'scheduled_at': scheduled.toUtc().toIso8601String(),
           'duration_minutes': _durationMinutes,
           'notes': _notes.isNotEmpty ? _notes : null,
+          'walk_type': _selectedWalkType.name,
         },
       ));
 
@@ -356,55 +382,72 @@ class _BookingScreenState extends State<BookingScreen> {
           ...List.generate(_dogs.length, (i) {
             final dog = _dogs[i];
             final isSelected = _selectedDogId == dog['id'];
+            final ruling = _ruleFor(dog);
+            final tile = Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isSelected ? AppColors.green50 : AppColors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isSelected ? AppColors.green600 : AppColors.border,
+                  width: isSelected ? 2 : 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: AppColors.orange50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(PhosphorIcons.pawPrint(),
+                        color: AppColors.orange500, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(dog['name'] ?? '',
+                            style: GoogleFonts.nunito(
+                                fontSize: 16, fontWeight: FontWeight.w700)),
+                        Text(
+                          '${dog['breed'] ?? 'Unknown breed'} · ${dog['weight_kg'] ?? '?'} kg',
+                          style: GoogleFonts.nunito(
+                              fontSize: 13,
+                              color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (isSelected)
+                    Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+                        color: AppColors.green600, size: 24),
+                ],
+              ),
+            );
             return Padding(
               padding: EdgeInsets.only(bottom: i < _dogs.length - 1 ? 8 : 0),
               child: GestureDetector(
-                onTap: () => setState(() => _selectedDogId = dog['id']),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: isSelected ? AppColors.green50 : AppColors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isSelected ? AppColors.green600 : AppColors.border,
-                      width: isSelected ? 2 : 1,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: AppColors.orange50,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(PhosphorIcons.pawPrint(),
-                            color: AppColors.orange500, size: 24),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(dog['name'] ?? '',
-                                style: GoogleFonts.nunito(
-                                    fontSize: 16, fontWeight: FontWeight.w700)),
-                            Text(
-                              '${dog['breed'] ?? 'Unknown breed'} · ${dog['weight_kg'] ?? '?'} kg',
-                              style: GoogleFonts.nunito(
-                                  fontSize: 13,
-                                  color: AppColors.textSecondary),
-                            ),
-                          ],
+                onTap: () {
+                  if (!ruling.allowed) {
+                    final l = AppLocalizations.of(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          localizedRuleError(l, ruling.errorCodeKey!),
                         ),
                       ),
-                      if (isSelected)
-                        Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
-                            color: AppColors.green600, size: 24),
-                    ],
-                  ),
-                ),
+                    );
+                    return;
+                  }
+                  setState(() => _selectedDogId = dog['id']);
+                },
+                child: ruling.allowed
+                    ? tile
+                    : Opacity(opacity: 0.4, child: tile),
               ),
             );
           }),
