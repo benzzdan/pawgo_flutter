@@ -32,11 +32,12 @@ class WalkerService {
         return walkers;
       }
 
-      _log('fetchWalkers: fetching enabled walkers');
+      _log('fetchWalkers: fetching enabled + verified walkers');
       final data = await _supabase
           .from('walkers')
           .select('*, users(full_name, avatar_url)')
           .eq('is_enabled', true)
+          .eq('verification_status', 'verified')
           .order('avg_rating', ascending: false);
       final walkers = (data as List).map((e) => Walker.fromJson(e)).toList();
       _log('fetchWalkers: got ${walkers.length} walkers');

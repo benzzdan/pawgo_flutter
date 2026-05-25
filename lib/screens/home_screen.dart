@@ -93,6 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
           .from('walkers')
           .select('id, user_id, bio, experience_years, hourly_rate_mxn, avg_rating, total_walks, users(full_name, avatar_url)')
           .eq('is_enabled', true)
+          .eq('verification_status', 'verified')
           .order('avg_rating', ascending: false));
 
       if (!mounted) return;

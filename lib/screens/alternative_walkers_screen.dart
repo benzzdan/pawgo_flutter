@@ -101,11 +101,16 @@ class _AlternativeWalkersScreenState extends State<AlternativeWalkersScreen> {
 
   Future<List<Map<String, dynamic>>> _fetchWalkers() async {
     if (_walkerIds.isEmpty) return [];
+    // Filter on verification_status here as well as on the upstream search
+    // — a walker could have lost their verified state between the time the
+    // alternates list was assembled and the time this screen displays them.
     final data = await withRetry(() => Supabase.instance.client
         .from('walkers')
         .select(
             'id, user_id, hourly_rate_mxn, avg_rating, total_walks, bio, users(full_name, avatar_url)')
-        .inFilter('id', _walkerIds));
+        .inFilter('id', _walkerIds)
+        .eq('is_enabled', true)
+        .eq('verification_status', 'verified'));
     return List<Map<String, dynamic>>.from(data);
   }
 
