@@ -267,8 +267,8 @@ class _WalkerApplicationStep4ScreenState
                   onPressed: () {
                     Navigator.pushNamedAndRemoveUntil(
                       context,
-                      '/home',
-                      (route) => false,
+                      '/walker-verification',
+                      (route) => route.settings.name == '/home',
                     );
                   },
                   style: ElevatedButton.styleFrom(
@@ -278,6 +278,33 @@ class _WalkerApplicationStep4ScreenState
                       borderRadius: BorderRadius.circular(16),
                     ),
                     elevation: 0,
+                  ),
+                  child: Text(
+                    'Continue to identity verification',
+                    style: GoogleFonts.nunito(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      '/home',
+                      (route) => false,
+                    );
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.textSecondary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                   ),
                   child: Text(
                     'Back to Home',
