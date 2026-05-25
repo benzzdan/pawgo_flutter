@@ -131,6 +131,27 @@ class RoleService {
         : ActiveRole.owner;
   }
 
+  /// Mark the onboarding flow (welcome → role → permissions → first-step)
+  /// as completed for the current user by stamping
+  /// `users.onboarding_completed_at = now()`. The new `_AuthGate` consults
+  /// this column to decide whether a returning user lands at `/welcome` or
+  /// `/home`.
+  ///
+  /// Called by:
+  /// - the dog-onboarding intro after "Add my dog" or "Skip for now"
+  /// - the walker path after walker_application is submitted
+  ///
+  /// No-ops when there's no signed-in user.
+  Future<void> markOnboardingComplete() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    await _client
+        .from('users')
+        .update({'onboarding_completed_at': DateTime.now().toIso8601String()})
+        .eq('id', userId);
+  }
+
   /// Reset state on sign-out.
   void reset() {
     _walkerChannel?.unsubscribe();
