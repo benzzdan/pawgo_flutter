@@ -89,6 +89,11 @@ class AppColors {
   static const pink400 = Color(0xFFF472B6);
   static const pink500 = Color(0xFFEC4899);
 
+  /// Shared warm-pink background for owner-onboarding accent screens
+  /// (`/owner-offerings`, `/finding-walkers`). Single source of truth so both
+  /// screens stay visually continuous.
+  static const onboardingAccent = Color(0xFFFCE4EC);
+
   // Red
   static const red500 = Color(0xFFEF4444);
   static const red50 = Color(0xFFFEF2F2);
