@@ -25,6 +25,8 @@ void main() {
           // Stub destinations so pushNamed doesn't blow up.
           '/signup': (_) => const Scaffold(body: Text('signup-stub')),
           '/login': (_) => const Scaffold(body: Text('login-stub')),
+          '/owner-offerings': (_) =>
+              const Scaffold(body: Text('offerings-stub')),
         },
         navigatorObservers: [_SpyObserver(pushedRoutes)],
       );
@@ -44,7 +46,8 @@ void main() {
       expect(find.byKey(const Key('welcomeLoginLink')), findsOneWidget);
     });
 
-    testWidgets('tapping the owner button pushes /signup with role=owner',
+    testWidgets(
+        'tapping the owner button pushes /owner-offerings (PR C value-prop step)',
         (tester) async {
       await tester.pumpWidget(buildHarness());
 
@@ -54,10 +57,10 @@ void main() {
       await tester.tap(ownerButton);
       await tester.pumpAndSettle();
 
-      expect(pushedRoutes.last.$1, '/signup');
-      final args = pushedRoutes.last.$2;
-      expect(args, isA<Map>());
-      expect((args! as Map)['role'], 'owner');
+      // PR C: owners go through /owner-offerings before /signup so they
+      // see the trust-signal value proposition first. The role is
+      // implied owner — Offerings forwards to /signup with role=owner.
+      expect(pushedRoutes.last.$1, '/owner-offerings');
     });
 
     testWidgets('tapping the walker button pushes /signup with role=walker',

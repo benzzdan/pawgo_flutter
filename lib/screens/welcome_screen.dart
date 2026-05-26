@@ -11,16 +11,27 @@ import '../widgets/big_role_button.dart';
 /// tagline, illustrated hero, two role buttons (owner filled, walker
 /// outlined), and a "Log In" link for returning users.
 ///
-/// Tapping a role button pushes `/signup` with the chosen role in arguments,
-/// so the sign-up screen can route to the correct onboarding path on success.
+/// Role routing:
+/// - Owner tap → pushes `/owner-offerings` (NEW in PR C) — a value-prop
+///   step that explains vet-approved / background-checked / identity-verified
+///   walkers before the sign-up form. The role is implied owner; Offerings
+///   itself forwards to `/signup` with `role: 'owner'` on Connect.
+/// - Walker tap → pushes `/signup` directly with `role: 'walker'` —
+///   unchanged.
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
 
   void _onRolePicked(BuildContext context, Role role) {
+    if (role == Role.owner) {
+      // PR C: route owners through the offerings value-prop screen
+      // before the sign-up form.
+      Navigator.pushNamed(context, '/owner-offerings');
+      return;
+    }
     Navigator.pushNamed(
       context,
       '/signup',
-      arguments: {'role': role == Role.owner ? 'owner' : 'walker'},
+      arguments: const {'role': 'walker'},
     );
   }
 
