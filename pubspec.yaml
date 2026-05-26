@@ -48,6 +48,7 @@ flutter:
   generate: true
   assets:
     - lib/assets/illustrations/
+    - lib/assets/animations/
     - assets/illustrations/corgi_lying.png
     - assets/illustrations/corgi_sitting.png
     - assets/illustrations/corgi_wagging.png
