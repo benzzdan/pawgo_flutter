@@ -47,6 +47,8 @@ import 'package:pawgo/screens/welcome_screen.dart';
 import 'package:pawgo/screens/permissions_priming_screen.dart';
 import 'package:pawgo/screens/dog_onboarding_intro_screen.dart';
 import 'package:pawgo/screens/legal_acceptance_screen.dart';
+import 'package:pawgo/screens/owner_offerings_screen.dart';
+import 'package:pawgo/screens/finding_walkers_loader_screen.dart';
 import 'package:pawgo/config/legal_placeholder.dart' show LegalDoc;
 import 'package:pawgo/screens/bookings_screen.dart';
 import 'package:pawgo/widgets/review_bottom_sheet.dart';
@@ -272,6 +274,10 @@ class PawgoApp extends StatelessWidget {
                   const LegalAcceptanceScreen(doc: LegalDoc.terms),
               '/legal/privacy': (context) =>
                   const LegalAcceptanceScreen(doc: LegalDoc.privacy),
+              // ----- PR C: onboarding refinements -------------------------
+              '/owner-offerings': (context) => const OwnerOfferingsScreen(),
+              '/finding-walkers': (context) =>
+                  const FindingWalkersLoaderScreen(),
             };
             final builder = routes[settings.name];
             if (builder != null) {
