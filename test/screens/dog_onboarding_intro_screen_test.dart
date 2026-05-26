@@ -25,9 +25,19 @@ void main() {
         navigatorObservers: [_SpyObserver(pushedRoutes, replacedRoutes)],
         // Stub destinations so navigation doesn't crash.
         routes: {
-          '/dog-profile-form': (_) =>
-              const Scaffold(body: Text('stub-dog-profile')),
+          // PR C: the dog form stub immediately pops with `true` so the
+          // intro's _onAddMyDog can await the result and continue on to
+          // /finding-walkers.
+          '/dog-profile-form': (ctx) {
+            // Schedule the pop after the route is built.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              Navigator.pop(ctx, true);
+            });
+            return const Scaffold(body: Text('stub-dog-profile'));
+          },
           '/home': (_) => const Scaffold(body: Text('stub-home')),
+          '/finding-walkers': (_) =>
+              const Scaffold(body: Text('stub-finding-walkers')),
         },
       );
     }
@@ -44,7 +54,8 @@ void main() {
       expect(find.byKey(const Key('dogOnboardingSkipCta')), findsOneWidget);
     });
 
-    testWidgets('Add my dog pushes /dog-profile-form (replacement)',
+    testWidgets(
+        'Add my dog pushes /dog-profile-form then forwards to /finding-walkers',
         (tester) async {
       tester.view.physicalSize = const Size(800, 1600);
       tester.view.devicePixelRatio = 1.0;
@@ -57,16 +68,24 @@ void main() {
       await tester.tap(find.byKey(const Key('dogOnboardingAddCta')));
       await tester.pumpAndSettle();
 
-      // The screen pushes a *replacement* to /dog-profile-form, so the new
-      // route name must show up via didReplace.
+      // PR C: Add my dog pushes (not replaces) the form, so /dog-profile-form
+      // arrives via didPush; the form stub auto-pops with `true`, and the
+      // intro then pushReplacement to /finding-walkers.
       expect(
-        replacedRoutes.any((entry) => entry.$1 == '/dog-profile-form'),
+        pushedRoutes.any((entry) => entry.$1 == '/dog-profile-form'),
         isTrue,
-        reason: 'Add my dog should replace to /dog-profile-form',
+        reason: 'Add my dog should push /dog-profile-form',
+      );
+      expect(
+        replacedRoutes.any((entry) => entry.$1 == '/finding-walkers'),
+        isTrue,
+        reason:
+            'After the form pops with success, intro should replace to /finding-walkers',
       );
     });
 
-    testWidgets('Skip for now calls onMarkComplete and routes to /home',
+    testWidgets(
+        'Skip for now calls onMarkComplete and routes to /finding-walkers',
         (tester) async {
       tester.view.physicalSize = const Size(800, 1600);
       tester.view.devicePixelRatio = 1.0;
@@ -84,10 +103,12 @@ void main() {
 
       expect(completeCalls, 1,
           reason: 'Skip should mark onboarding complete on the server');
+      // PR C: Skip now goes through /finding-walkers loader on the way home,
+      // not straight to /home.
       expect(
-        replacedRoutes.any((entry) => entry.$1 == '/home'),
+        replacedRoutes.any((entry) => entry.$1 == '/finding-walkers'),
         isTrue,
-        reason: 'Skip should replace to /home',
+        reason: 'Skip should replace to /finding-walkers',
       );
     });
   });

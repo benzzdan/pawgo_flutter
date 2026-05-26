@@ -10,13 +10,14 @@ import '../theme/app_theme.dart';
 /// Single illustrated screen explaining what we'll collect about the dog,
 /// with two CTAs:
 /// - **Add my dog** → push `/dog-profile-form` and let that screen save.
-/// - **Skip for now** → mark onboarding complete and route to `/home`.
+/// - **Skip for now** → mark onboarding complete and route via
+///   `/finding-walkers` to `/home`.
 ///
 /// Both branches mark `users.onboarding_completed_at` so the welcome flow
-/// never re-runs for this user (the Add path's listener handles its own
-/// completion when the dog form finishes; we mark it here too so a
-/// user who interrupts the dog form still doesn't get re-prompted at
-/// /welcome on next launch).
+/// never re-runs for this user. PR C: both branches now route through
+/// the `/finding-walkers` Rive loader screen instead of jumping straight
+/// to `/home`, softening the transition with a 2.0s branded loading state
+/// while the walker list pre-fetches.
 class DogOnboardingIntroScreen extends StatelessWidget {
   const DogOnboardingIntroScreen({
     super.key,
@@ -40,13 +41,29 @@ class DogOnboardingIntroScreen extends StatelessWidget {
     // form doesn't leave the user in a re-prompt loop.
     await _markComplete();
     if (!context.mounted) return;
-    Navigator.pushReplacementNamed(context, '/dog-profile-form');
+    // PR C: push (not replace) the dog form so we can await its result
+    // and then route through /finding-walkers. The form pops with `true`
+    // on a successful save.
+    final saved = await Navigator.pushNamed<Object?>(
+      context,
+      '/dog-profile-form',
+    );
+    if (!context.mounted) return;
+    // Either path lands at /finding-walkers — both the "saved my dog"
+    // and the "backed out" cases lead to the home dashboard via the
+    // branded loader, since onboarding has been marked complete.
+    if (saved == true || saved == null || saved == false) {
+      Navigator.pushReplacementNamed(context, '/finding-walkers');
+    }
   }
 
   Future<void> _onSkip(BuildContext context) async {
     await _markComplete();
     if (!context.mounted) return;
-    Navigator.pushReplacementNamed(context, '/home');
+    // PR C: route via the /finding-walkers loader instead of jumping
+    // straight to /home. The loader pre-fetches the walker list and
+    // displays the branded Rive animation for ≥2s.
+    Navigator.pushReplacementNamed(context, '/finding-walkers');
   }
 
   @override
