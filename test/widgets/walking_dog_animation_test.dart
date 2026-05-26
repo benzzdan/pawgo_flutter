@@ -12,31 +12,33 @@ Widget _wrap(Widget child, {bool disableAnimations = false}) {
 
 void main() {
   group('WalkingDogAnimation', () {
-    testWidgets('renders the GIF asset at the requested size', (tester) async {
-      await tester.pumpWidget(_wrap(const WalkingDogAnimation(size: 150)));
+    testWidgets('default size in reduce-motion fallback is 240', (tester) async {
+      // Rive can't load assets in the test runtime; use the reduce-motion path
+      // to inspect the outer SizedBox without instantiating Rive.
+      await tester.pumpWidget(_wrap(
+        const WalkingDogAnimation(),
+        disableAnimations: true,
+      ));
+      final sizedBox = tester.widget<SizedBox>(
+        find.byWidgetPredicate(
+          (w) => w is SizedBox && w.width == 240 && w.height == 240,
+        ),
+      );
+      expect(sizedBox.width, 240);
+    });
 
+    testWidgets('requested size passes through (reduce-motion fallback)',
+        (tester) async {
+      await tester.pumpWidget(_wrap(
+        const WalkingDogAnimation(size: 150),
+        disableAnimations: true,
+      ));
       final sizedBox = tester.widget<SizedBox>(
         find.byWidgetPredicate(
           (w) => w is SizedBox && w.width == 150 && w.height == 150,
         ),
       );
       expect(sizedBox.width, 150);
-
-      final image = tester.widget<Image>(find.byType(Image));
-      final assetImage = image.image as AssetImage;
-      expect(assetImage.assetName, 'lib/assets/animations/walking_dog.gif');
-      expect(image.fit, BoxFit.contain);
-      expect(image.gaplessPlayback, isTrue);
-    });
-
-    testWidgets('default size is 200', (tester) async {
-      await tester.pumpWidget(_wrap(const WalkingDogAnimation()));
-      final sizedBox = tester.widget<SizedBox>(
-        find.byWidgetPredicate(
-          (w) => w is SizedBox && w.width == 200 && w.height == 200,
-        ),
-      );
-      expect(sizedBox.width, 200);
     });
 
     testWidgets('falls back to PawProgressIndicator under reduce-motion',
@@ -46,19 +48,22 @@ void main() {
         disableAnimations: true,
       ));
       expect(find.byType(PawProgressIndicator), findsOneWidget);
-      expect(find.byType(Image), findsNothing);
     });
 
     testWidgets('exposes a Semantics node with the provided label',
         (tester) async {
-      await tester.pumpWidget(
-        _wrap(const WalkingDogAnimation(semanticsLabel: 'Finding walkers')),
-      );
+      await tester.pumpWidget(_wrap(
+        const WalkingDogAnimation(semanticsLabel: 'Finding walkers'),
+        disableAnimations: true,
+      ));
       expect(find.bySemanticsLabel('Finding walkers'), findsOneWidget);
     });
 
     testWidgets('Semantics label defaults to "Loading"', (tester) async {
-      await tester.pumpWidget(_wrap(const WalkingDogAnimation()));
+      await tester.pumpWidget(_wrap(
+        const WalkingDogAnimation(),
+        disableAnimations: true,
+      ));
       expect(find.bySemanticsLabel('Loading'), findsOneWidget);
     });
   });

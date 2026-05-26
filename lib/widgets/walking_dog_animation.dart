@@ -1,32 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:pawgo/widgets/paw_progress_indicator.dart';
+import 'package:rive/rive.dart';
 
-/// A looping walking-dog animation used on loader screens.
+/// A looping Rive walking-dog animation used on loader screens.
 ///
-/// Authored in Remotion (`animations/walking-dog/` at the repo root) and
-/// exported as a GIF. Flutter's [Image.asset] plays animated GIFs natively
-/// with built-in looping, so no extra runtime dep is needed.
+/// The Rive source lives at `lib/assets/animations/dog_loader.riv`
+/// (community asset — "Dog follows his ball"). Rive renders vectors at
+/// native 60fps with autoplay, so this widget is intentionally tiny.
 ///
 /// Respects [MediaQueryData.disableAnimations] (system-level reduce-motion):
 /// when true, swaps to the existing [PawProgressIndicator] so the user still
 /// sees a motion-indicating UI without the dog animation.
 ///
-/// Pawgo brand colors are baked into the GIF (warm caramel body, light belly,
-/// cacao brown ear). To re-theme, edit `animations/walking-dog/src/Root.tsx`
-/// `defaultProps` and re-export via `npm run export-gif`.
+/// To replace the underlying animation, swap the .riv file at the same path;
+/// no Dart changes needed.
 class WalkingDogAnimation extends StatelessWidget {
   const WalkingDogAnimation({
     super.key,
-    this.size = 200,
+    this.size = 240,
     this.semanticsLabel,
+    this.fit = BoxFit.contain,
   });
 
   /// Edge length of the rendered animation in logical pixels.
-  /// The source GIF is 200×200; rendering larger may look soft.
+  /// Rive scales without quality loss; default 240 reads well on the
+  /// finding-walkers loader screen.
   final double size;
 
   /// Optional semantics label, defaults to a generic "Loading" message.
   final String? semanticsLabel;
+
+  /// How the Rive artboard fits inside the available space.
+  final BoxFit fit;
 
   @override
   Widget build(BuildContext context) {
@@ -39,10 +44,10 @@ class WalkingDogAnimation extends StatelessWidget {
         dimension: size,
         child: disableAnimations
             ? const Center(child: PawProgressIndicator())
-            : Image.asset(
-                'lib/assets/animations/walking_dog.gif',
-                fit: BoxFit.contain,
-                gaplessPlayback: true,
+            : RiveAnimation.asset(
+                'lib/assets/animations/dog_loader.riv',
+                fit: fit,
+                antialiasing: true,
               ),
       ),
     );
